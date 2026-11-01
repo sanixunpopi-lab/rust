@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V44 - UI SCROLL & ANIMATIONS)
+    pisunRust v2 - OMNIX FRAMEWORK (V45 - WALLSHOT FIX & HP TEXT)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -28,6 +28,7 @@ local Config = {
     ESPEnabled = false,
     ESPMaxDist = 1000,
     ESPWeapon = false,
+    ESPHealthText = true, -- Текст HP вместо полоски
     DamageNumbers = false,
     ShowDamageLog = false,
     
@@ -85,28 +86,71 @@ local OriginalHeadSizes = {}
 local OriginalProps = {} 
 
 -- ============================================================================
--- SAFE WALLSHOT HOOK
+-- WALLSHOT (ХУК ВСЕХ ВИДОВ ЛУЧЕЙ)
 -- ============================================================================
 task.spawn(function()
     if type(hookfunction) == "function" then
         pcall(function()
+            -- 1. Стандартный Raycast
             local oldRaycast = workspace.Raycast
             hookfunction(workspace.Raycast, function(self, origin, direction, params)
                 if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
                     local newParams = RaycastParams.new()
                     newParams.FilterType = Enum.RaycastFilterType.Include
                     newParams.FilterDescendantsInstances = {}
-                    
                     for _, p in pairs(Players:GetPlayers()) do
                         if p ~= LocalPlayer and p.Character then
                             table.insert(newParams.FilterDescendantsInstances, p.Character)
                         end
                     end
-                    
                     local result = oldRaycast(self, origin, direction, newParams)
                     if result and result.Instance then return result end
                 end
                 return oldRaycast(self, origin, direction, params)
+            end)
+        end)
+
+        -- 2. Устаревший FindPartOnRayWithIgnoreList (часто используется в старых играх)
+        pcall(function()
+            local oldFindPart = workspace.FindPartOnRayWithIgnoreList
+            hookfunction(workspace.FindPartOnRayWithIgnoreList, function(self, ray, ignoreList, ...)
+                if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
+                    local newIgnoreList = {}
+                    for _, obj in pairs(workspace:GetDescendants()) do
+                        if not obj:IsA("Model") or not obj:FindFirstChildOfClass("Humanoid") then
+                            table.insert(newIgnoreList, obj)
+                        end
+                    end
+                    -- Убираем игроков из игнор-листа, чтобы луч их видел
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p.Character then
+                            for i = #newIgnoreList, 1, -1 do
+                                if newIgnoreList[i] == p.Character then table.remove(newIgnoreList, i) end
+                            end
+                        end
+                    end
+                    local part, pos = oldFindPart(self, ray, newIgnoreList, ...)
+                    if part then return part, pos end
+                end
+                return oldFindPart(self, ray, ignoreList, ...)
+            end)
+        end)
+
+        -- 3. Обычный FindPartOnRay
+        pcall(function()
+            local oldFindPartOnRay = workspace.FindPartOnRay
+            hookfunction(workspace.FindPartOnRay, function(self, ray, ...)
+                if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
+                    local newIgnoreList = {}
+                    for _, obj in pairs(workspace:GetDescendants()) do
+                        if not obj:IsA("Model") or not obj:FindFirstChildOfClass("Humanoid") then
+                            table.insert(newIgnoreList, obj)
+                        end
+                    end
+                    local part, pos = oldFindPartOnRay(self, ray, newIgnoreList, ...)
+                    if part then return part, pos end
+                end
+                return oldFindPartOnRay(self, ray, ...)
             end)
         end)
     end
@@ -130,7 +174,6 @@ local function ApplyLighting()
             elseif v:IsA("Sky") then v.StarCount = 0 end
         end
     else
-        -- Возврат к стандарту (примерно)
         Lighting.ClockTime = 14
         Lighting.Brightness = 1
         Lighting.Ambient = Color3.fromRGB(70, 70, 70)
@@ -368,7 +411,7 @@ local function GetShortWeaponName(toolName)
 end
 
 -- ============================================================================
--- UI ФРЕЙМВОРК (АНИМАЦИИ И СКРОЛЛ)
+-- UI ФРЕЙМВОРК
 -- ============================================================================
 local ScreenGui = Instance.new("ScreenGui"); ScreenGui.Name = "pisunRustUI_v2"; ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui"); ScreenGui.ResetOnSpawn = false
 
@@ -417,102 +460,43 @@ local Header = Instance.new("Frame"); Header.Size = UDim2.new(1, 0, 0, 45); Head
 local HeaderCorner = Instance.new("UICorner"); HeaderCorner.CornerRadius = UDim.new(0, 8); HeaderCorner.Parent = Header
 local Title = Instance.new("TextLabel"); Title.Size = UDim2.new(1, -20, 1, 0); Title.Position = UDim2.new(0, 15, 0, 0); Title.BackgroundTransparency = 1; Title.Text = "pisunRust v2 | Menu"; Title.TextColor3 = Color3.fromRGB(230, 230, 250); Title.Font = Enum.Font.GothamBold; Title.TextSize = 16; Title.TextXAlignment = Enum.TextXAlignment.Left; Title.Parent = Header
 
--- Левая панель вкладок (Теперь со скроллом)
-local TabContainer = Instance.new("ScrollingFrame")
-TabContainer.Size = UDim2.new(0, 130, 1, -45)
-TabContainer.Position = UDim2.new(0, 0, 0, 45)
-TabContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-TabContainer.BorderSizePixel = 0
-TabContainer.ScrollBarThickness = 3
-TabContainer.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 255)
-TabContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
-TabContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
-TabContainer.Parent = Main
+-- Левая панель вкладок
+local TabContainer = Instance.new("ScrollingFrame"); TabContainer.Size = UDim2.new(0, 130, 1, -45); TabContainer.Position = UDim2.new(0, 0, 0, 45); TabContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 30); TabContainer.BorderSizePixel = 0; TabContainer.ScrollBarThickness = 3; TabContainer.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 255); TabContainer.CanvasSize = UDim2.new(0, 0, 0, 0); TabContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y; TabContainer.Parent = Main
+local TabLayout = Instance.new("UIListLayout"); TabLayout.Padding = UDim.new(0, 5); TabLayout.SortOrder = Enum.SortOrder.LayoutOrder; TabLayout.Parent = TabContainer
+local TabPadding = Instance.new("UIPadding"); TabPadding.PaddingTop = UDim.new(0, 5); TabPadding.PaddingLeft = UDim.new(0, 5); TabPadding.PaddingRight = UDim.new(0, 5); TabPadding.Parent = TabContainer
 
-local TabLayout = Instance.new("UIListLayout")
-TabLayout.Padding = UDim.new(0, 5)
-TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-TabLayout.Parent = TabContainer
-
-local TabPadding = Instance.new("UIPadding")
-TabPadding.PaddingTop = UDim.new(0, 5)
-TabPadding.PaddingLeft = UDim.new(0, 5)
-TabPadding.PaddingRight = UDim.new(0, 5)
-TabPadding.Parent = TabContainer
-
--- Правая панель контента (Скролл)
-local ContentContainer = Instance.new("Frame")
-ContentContainer.Size = UDim2.new(1, -150, 1, -65)
-ContentContainer.Position = UDim2.new(0, 140, 0, 55)
-ContentContainer.BackgroundTransparency = 1
-ContentContainer.Parent = Main
-
+-- Правая панель контента
+local ContentContainer = Instance.new("Frame"); ContentContainer.Size = UDim2.new(1, -150, 1, -65); ContentContainer.Position = UDim2.new(0, 140, 0, 55); ContentContainer.BackgroundTransparency = 1; ContentContainer.Parent = Main
 local Tabs, Pages = {}, {}
 
 local function CreateTab(name)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -10, 0, 35)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-    btn.Text = "  " .. name
-    btn.TextColor3 = Color3.fromRGB(180, 180, 200)
-    btn.Font = Enum.Font.GothamSemibold
-    btn.TextSize = 14
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.Parent = TabContainer
-    
+    local btn = Instance.new("TextButton"); btn.Size = UDim2.new(1, -10, 0, 35); btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45); btn.Text = "  " .. name; btn.TextColor3 = Color3.fromRGB(180, 180, 200); btn.Font = Enum.Font.GothamSemibold; btn.TextSize = 14; btn.TextXAlignment = Enum.TextXAlignment.Left; btn.Parent = TabContainer
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 6); corner.Parent = btn
     
-    -- Страница со скроллом
-    local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.BackgroundTransparency = 1
-    page.BorderSizePixel = 0
-    page.ScrollBarThickness = 4
-    page.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 255)
-    page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    page.Visible = false
-    page.Parent = ContentContainer
+    local page = Instance.new("ScrollingFrame"); page.Size = UDim2.new(1, 0, 1, 0); page.BackgroundTransparency = 1; page.BorderSizePixel = 0; page.ScrollBarThickness = 4; page.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 255); page.CanvasSize = UDim2.new(0, 0, 0, 0); page.AutomaticCanvasSize = Enum.AutomaticSize.Y; page.Visible = false; page.Parent = ContentContainer
+    local pageLayout = Instance.new("UIListLayout"); pageLayout.Padding = UDim.new(0, 5); pageLayout.SortOrder = Enum.SortOrder.LayoutOrder; pageLayout.Parent = page
+    local pagePadding = Instance.new("UIPadding"); pagePadding.PaddingTop = UDim.new(0, 5); pagePadding.PaddingRight = UDim.new(0, 10); pagePadding.PaddingBottom = UDim.new(0, 5); pagePadding.Parent = page
     
-    local pageLayout = Instance.new("UIListLayout")
-    pageLayout.Padding = UDim.new(0, 5)
-    pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    pageLayout.Parent = page
+    Tabs[name] = btn; Pages[name] = page
     
-    local pagePadding = Instance.new("UIPadding")
-    pagePadding.PaddingTop = UDim.new(0, 5)
-    pagePadding.PaddingRight = UDim.new(0, 10)
-    pagePadding.PaddingBottom = UDim.new(0, 5)
-    pagePadding.Parent = page
-    
-    Tabs[name] = btn
-    Pages[name] = page
-    
-    -- Анимация вкладок
     btn.MouseButton1Click:Connect(function()
         for tName, tBtn in pairs(Tabs) do 
             TweenService:Create(tBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 45), TextColor3 = Color3.fromRGB(180, 180, 200)}):Play()
             Pages[tName].Visible = false
         end
         TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 75), TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-        
-        page.Visible = true
-        page.Position = UDim2.new(0, 20, 0, 0)
-        page.BackgroundTransparency = 1
+        page.Visible = true; page.Position = UDim2.new(0, 20, 0, 0)
         TweenService:Create(page, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
     end)
-    
     return page
 end
 
--- Создание вкладок
 local PageAimbot = CreateTab("Aimbot")
 local PageVisuals = CreateTab("Visuals")
 local PageOptimizer = CreateTab("Optimizer")
 local PageBinds = CreateTab("Binds")
 local PageMisc = CreateTab("Misc")
 
--- Базовые элементы UI
 local function CreateToggle(parent, text, default, callback)
     local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 30); frame.BackgroundTransparency = 1; frame.Parent = parent
     local label = Instance.new("TextLabel"); label.Size = UDim2.new(0.8, 0, 1, 0); label.BackgroundTransparency = 1; label.Text = text; label.TextColor3 = Color3.fromRGB(210, 210, 220); label.Font = Enum.Font.Gotham; label.TextSize = 14; label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = frame
@@ -520,7 +504,6 @@ local function CreateToggle(parent, text, default, callback)
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(1, 0); corner.Parent = btn
     local circle = Instance.new("Frame"); circle.Size = UDim2.new(0, 14, 0, 14); circle.Position = default and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7); circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255); circle.Parent = btn
     local circleCorner = Instance.new("UICorner"); circleCorner.CornerRadius = UDim.new(1, 0); circleCorner.Parent = circle
-    
     local state = default
     btn.MouseButton1Click:Connect(function()
         state = not state
@@ -565,20 +548,13 @@ end
 local function CreateTextBox(parent, placeholder, defaultText, callback)
     local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 30); frame.BackgroundTransparency = 1; frame.Parent = parent
     local box = Instance.new("TextBox")
-    box.Size = UDim2.new(1, 0, 1, 0)
-    box.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-    box.TextColor3 = Color3.fromRGB(255, 255, 255)
-    box.PlaceholderText = placeholder
-    box.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-    box.Text = defaultText
-    box.Font = Enum.Font.Gotham
-    box.TextSize = 14
-    box.Parent = frame
+    box.Size = UDim2.new(1, 0, 1, 0); box.BackgroundColor3 = Color3.fromRGB(35, 35, 50); box.TextColor3 = Color3.fromRGB(255, 255, 255)
+    box.PlaceholderText = placeholder; box.PlaceholderColor3 = Color3.fromRGB(150, 150, 150); box.Text = defaultText
+    box.Font = Enum.Font.Gotham; box.TextSize = 14; box.Parent = frame
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 6); corner.Parent = box
     box.FocusLost:Connect(function() callback(box.Text) end)
 end
 
--- Заполнение вкладок
 -- Aimbot
 CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, function(v) Config.AimbotEnabled = v end)
 CreateToggle(PageAimbot, "Visible Aim", Config.VisibleAim, function(v) Config.VisibleAim = v end)
@@ -591,6 +567,7 @@ methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, function
 -- Visuals
 CreateToggle(PageVisuals, "Player ESP Boxes", Config.ESPEnabled, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, function(v) Config.ESPWeapon = v end)
+CreateToggle(PageVisuals, "ESP Health Text (HP)", Config.ESPHealthText, function(v) Config.ESPHealthText = v end) -- НОВЫЙ ТУМБЛЕР
 CreateToggle(PageVisuals, "Player Chams (Green/Red)", Config.PlayerChamsEnabled, function(v) Config.PlayerChamsEnabled = v end)
 CreateSlider(PageVisuals, "ESP Color (Hue)", 0, 360, Config.ESPBoxHue, function(v) Config.ESPBoxHue = v end)
 
@@ -628,10 +605,8 @@ end
 CreateBindButton(PageBinds, "Aimbot Key", "Aimbot")
 CreateBindButton(PageBinds, "ESP Toggle", "ESP")
 
--- Активация первой вкладки (Aimbot)
-Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75)
-Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255)
-Pages["Aimbot"].Visible = true
+-- Активация первой вкладки
+Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
 
 -- ============================================================================
 -- UNLOAD
@@ -644,7 +619,7 @@ local function FullCleanup()
     pcall(function() FOVCircle:Remove() end)
     for p, esp in pairs(ESPObjects) do pcall(function() 
         esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
-        esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove();
+        esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove();
     end) end
     ESPObjects = {}
     
@@ -717,15 +692,14 @@ local function CreateESPObject()
     esp.Name = Drawing.new("Text"); esp.Name.Size = 15; esp.Name.Center = true; esp.Name.Outline = true; esp.Name.Font = 2; esp.Name.Color = Color3.fromRGB(255, 255, 255); esp.Name.Visible = false
     esp.Dist = Drawing.new("Text"); esp.Dist.Size = 13; esp.Dist.Center = true; esp.Dist.Outline = true; esp.Dist.Color = Color3.fromRGB(255, 200, 0); esp.Dist.Visible = false
     esp.Weapon = Drawing.new("Text"); esp.Weapon.Size = 14; esp.Weapon.Center = true; esp.Weapon.Outline = true; esp.Weapon.Color = Color3.fromRGB(255, 150, 50); esp.Weapon.Visible = false
-    esp.HealthBarBg = Drawing.new("Square"); esp.HealthBarBg.Filled = true; esp.HealthBarBg.Color = Color3.fromRGB(0, 0, 0); esp.HealthBarBg.Thickness = 1; esp.HealthBarBg.Visible = false
-    esp.HealthBarFill = Drawing.new("Square"); esp.HealthBarFill.Filled = true; esp.HealthBarFill.Color = Color3.fromRGB(0, 255, 0); esp.HealthBarFill.Visible = false
+    esp.HealthText = Drawing.new("Text"); esp.HealthText.Size = 14; esp.HealthText.Center = true; esp.HealthText.Outline = true; esp.HealthText.Color = Color3.fromRGB(0, 255, 0); esp.HealthText.Visible = false -- НОВЫЙ ТЕКСТ HP
     return esp
 end
 
 local function CleanupESP(p)
     if ESPObjects[p] then local esp = ESPObjects[p]; pcall(function() 
         esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
-        esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove();
+        esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove();
     end); ESPObjects[p] = nil end
 end
 
@@ -750,7 +724,7 @@ local function UpdateESP()
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then
         for _, esp in pairs(ESPObjects) do 
             esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; 
-            esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false; esp.Weapon.Visible = false
+            esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthText.Visible = false; esp.Weapon.Visible = false
         end
         for _, chams in pairs(ChamsObjects) do chams.Enabled = false end
         return
@@ -772,10 +746,7 @@ local function UpdateESP()
                             if not ChamsObjects[p] or ChamsObjects[p].Parent ~= char then
                                 CleanupChams(p)
                                 local chams = Instance.new("Highlight")
-                                chams.FillTransparency = 0.5
-                                chams.OutlineTransparency = 0
-                                chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                chams.Parent = char
+                                chams.FillTransparency = 0.5; chams.OutlineTransparency = 0; chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; chams.Parent = char
                                 ChamsObjects[p] = chams
                             end
                             local chams = ChamsObjects[p]
@@ -783,17 +754,10 @@ local function UpdateESP()
                             
                             if tick() - (chams:GetAttribute("LastCheck") or 0) > 0.1 then
                                 chams:SetAttribute("LastCheck", tick())
-                                if IsVisible(char) then
-                                    chams.FillColor = Color3.fromRGB(0, 255, 0)
-                                    chams.OutlineColor = Color3.fromRGB(0, 255, 0)
-                                else
-                                    chams.FillColor = Color3.fromRGB(255, 0, 0)
-                                    chams.OutlineColor = Color3.fromRGB(255, 255, 255)
-                                end
+                                if IsVisible(char) then chams.FillColor = Color3.fromRGB(0, 255, 0); chams.OutlineColor = Color3.fromRGB(0, 255, 0)
+                                else chams.FillColor = Color3.fromRGB(255, 0, 0); chams.OutlineColor = Color3.fromRGB(255, 255, 255) end
                             end
-                        else
-                            CleanupChams(p)
-                        end
+                        else CleanupChams(p) end
 
                         if Config.ESPEnabled then
                             if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
@@ -806,18 +770,37 @@ local function UpdateESP()
                                 for i=1, 4 do esp["Box"..i].Color = espColor end
                                 esp.Box1.From = Vector2.new(x, y); esp.Box1.To = Vector2.new(x + length, y); esp.Box2.From = Vector2.new(x, y); esp.Box2.To = Vector2.new(x, y + length); esp.Box3.From = Vector2.new(x + width, y + height); esp.Box3.To = Vector2.new(x + width - length, y + height); esp.Box4.From = Vector2.new(x + width, y + height); esp.Box4.To = Vector2.new(x + width, y + height - length)
                                 esp.Box1.Visible = true; esp.Box2.Visible = true; esp.Box3.Visible = true; esp.Box4.Visible = true
-                                esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, y - 45); esp.Name.Visible = true; esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, y - 30); esp.Dist.Visible = true
-                                if Config.ESPWeapon then local weaponName = GetWeaponName(char); if weaponName then esp.Weapon.Text = "[" .. GetShortWeaponName(weaponName) .. "]"; esp.Weapon.Position = Vector2.new(screenHead.X, y - 15); esp.Weapon.Visible = true else esp.Weapon.Visible = false end else esp.Weapon.Visible = false end
-                                local barWidth = 3; local barHeight = height; local barX = x - 6; esp.HealthBarBg.Size = Vector2.new(barWidth, barHeight); esp.HealthBarBg.Position = Vector2.new(barX, y); esp.HealthBarBg.Visible = true; local healthPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1); local fillHeight = barHeight * healthPercent; esp.HealthBarFill.Size = Vector2.new(barWidth, fillHeight); esp.HealthBarFill.Position = Vector2.new(barX, y + (barHeight - fillHeight)); if healthPercent > 0.5 then esp.HealthBarFill.Color = Color3.fromRGB(255 * (1 - (healthPercent - 0.5) * 2), 255, 0) else esp.HealthBarFill.Color = Color3.fromRGB(255, 255 * (healthPercent * 2), 0) end; esp.HealthBarFill.Visible = true
+                                
+                                esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, y - 45); esp.Name.Visible = true
+                                esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, y - 30); esp.Dist.Visible = true
+                                
+                                if Config.ESPWeapon then 
+                                    local weaponName = GetWeaponName(char); 
+                                    if weaponName then 
+                                        esp.Weapon.Text = "[" .. GetShortWeaponName(weaponName) .. "]"; esp.Weapon.Position = Vector2.new(screenHead.X, y - 15); esp.Weapon.Visible = true 
+                                    else esp.Weapon.Visible = false end 
+                                else esp.Weapon.Visible = false end
+                                
+                                -- ЛОГИКА ТЕКСТА HP
+                                if Config.ESPHealthText then
+                                    esp.HealthText.Text = "HP: " .. math.floor(hum.Health)
+                                    esp.HealthText.Position = Vector2.new(screenHead.X, y + height + 5) -- Под квадратом
+                                    if hum.Health > 50 then esp.HealthText.Color = Color3.fromRGB(0, 255, 0) 
+                                    elseif hum.Health > 25 then esp.HealthText.Color = Color3.fromRGB(255, 200, 0)
+                                    else esp.HealthText.Color = Color3.fromRGB(255, 50, 50) end
+                                    esp.HealthText.Visible = true
+                                else
+                                    esp.HealthText.Visible = false
+                                end
                             else 
-                                esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false; esp.Weapon.Visible = false
+                                esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthText.Visible = false; esp.Weapon.Visible = false
                             end
                         elseif ESPObjects[p] then
-                            ESPObjects[p].Box1.Visible = false; ESPObjects[p].Box2.Visible = false; ESPObjects[p].Box3.Visible = false; ESPObjects[p].Box4.Visible = false; ESPObjects[p].Name.Visible = false; ESPObjects[p].Dist.Visible = false; ESPObjects[p].HealthBarBg.Visible = false; ESPObjects[p].HealthBarFill.Visible = false; ESPObjects[p].Weapon.Visible = false
+                            ESPObjects[p].Box1.Visible = false; ESPObjects[p].Box2.Visible = false; ESPObjects[p].Box3.Visible = false; ESPObjects[p].Box4.Visible = false; ESPObjects[p].Name.Visible = false; ESPObjects[p].Dist.Visible = false; ESPObjects[p].HealthText.Visible = false; ESPObjects[p].Weapon.Visible = false
                         end
                     else
                         if ESPObjects[p] then
-                            ESPObjects[p].Box1.Visible = false; ESPObjects[p].Box2.Visible = false; ESPObjects[p].Box3.Visible = false; ESPObjects[p].Box4.Visible = false; ESPObjects[p].Name.Visible = false; ESPObjects[p].Dist.Visible = false; ESPObjects[p].HealthBarBg.Visible = false; ESPObjects[p].HealthBarFill.Visible = false; ESPObjects[p].Weapon.Visible = false
+                            ESPObjects[p].Box1.Visible = false; ESPObjects[p].Box2.Visible = false; ESPObjects[p].Box3.Visible = false; ESPObjects[p].Box4.Visible = false; ESPObjects[p].Name.Visible = false; ESPObjects[p].Dist.Visible = false; ESPObjects[p].HealthText.Visible = false; ESPObjects[p].Weapon.Visible = false
                         end
                         CleanupChams(p)
                     end
@@ -864,7 +847,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
         State.MenuOpen = not State.MenuOpen
         if State.MenuOpen then
             Main.Visible = true
-            Main.Position = UDim2.new(0.5, -260, 0.7, -260) -- Выезжает снизу
+            Main.Position = UDim2.new(0.5, -260, 0.7, -260)
             TweenService:Create(Main, menuTweenInfo, {Position = UDim2.new(0.5, -260, 0.5, -260)}):Play()
         else
             local hideTween = TweenService:Create(Main, menuTweenInfo, {Position = UDim2.new(0.5, -260, 0.7, -260)})
@@ -923,4 +906,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V44 Loaded. Scrolling & Animations active. All features OFF by default.")
+print("[pisunRust v2] V45 Loaded. Wallshot Fixed & HP Text active.")
