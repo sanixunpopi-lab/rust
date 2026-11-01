@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V32 - JUMP POWER)
+    pisunRust v2 - OMNIX FRAMEWORK (V33 - COSMETICS)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -43,9 +43,11 @@ local Config = {
     OptParticles = false,    
     OptGraphics = false,     
     
-    -- НОВОЕ: Прыжок
-    JumpPowerEnabled = false,
-    JumpPowerValue = 50,     -- Стандарт 50, макс 500
+    -- КОСМЕТИКА (НОВОЕ)
+    ThirdPersonEnabled = false,
+    ThirdPersonDist = 15,
+    ChinaHatEnabled = false,
+    TrailEnabled = false,
     
     AutoSprint = false,
     Fullbright = true,
@@ -96,6 +98,85 @@ local function ApplyLighting()
     for _, v in pairs(Lighting:GetChildren()) do
         if v:IsA("Atmosphere") then v.Density = 0; v.Haze = 0
         elseif v:IsA("Sky") then v.StarCount = 0 end
+    end
+end
+
+-- ============================================================================
+-- КОСМЕТИКА: ШЛЯПА И ТРЕЙЛ
+-- ============================================================================
+local function UpdateCosmetics()
+    if State.Unloaded then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    local head = char:FindFirstChild("Head")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+
+    -- 1. China Hat (Шляпа)
+    if head then
+        local hat = head:FindFirstChild("CheatChinaHat")
+        if Config.ChinaHatEnabled then
+            if not hat then
+                hat = Instance.new("Part")
+                hat.Name = "CheatChinaHat"
+                hat.Size = Vector3.new(2, 2, 2)
+                hat.Material = Enum.Material.Neon
+                hat.CanCollide = false
+                hat.Massless = true
+                hat.Parent = head
+
+                local mesh = Instance.new("SpecialMesh")
+                mesh.MeshType = Enum.MeshType.Cone
+                mesh.Scale = Vector3.new(1, 1, 1)
+                mesh.Parent = hat
+
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0 = head
+                weld.Part1 = hat
+                weld.Parent = hat
+                
+                -- Позиционируем ровно над головой
+                hat.CFrame = head.CFrame * CFrame.new(0, 1.5, 0)
+            end
+            -- Радужный цвет
+            local hue = (tick() * 0.5) % 1
+            hat.Color = Color3.fromHSV(hue, 1, 1)
+        elseif hat then
+            hat:Destroy()
+        end
+    end
+
+    -- 2. Trail (След)
+    if hrp then
+        local trail = hrp:FindFirstChild("CheatTrail")
+        if Config.TrailEnabled then
+            if not trail then
+                local a0 = Instance.new("Attachment")
+                a0.Position = Vector3.new(0, 1, 0)
+                a0.Name = "TrailA0"
+                a0.Parent = hrp
+
+                local a1 = Instance.new("Attachment")
+                a1.Position = Vector3.new(0, -1, 0)
+                a1.Name = "TrailA1"
+                a1.Parent = hrp
+
+                trail = Instance.new("Trail")
+                trail.Name = "CheatTrail"
+                trail.Attachment0 = a0
+                trail.Attachment1 = a1
+                trail.Lifetime = 0.5
+                trail.MinLength = 0
+                trail.Parent = hrp
+            end
+            -- Радужный цвет
+            local hue = (tick() * 0.5) % 1
+            trail.Color = ColorSequence.new(Color3.fromHSV(hue, 1, 1))
+        elseif trail then
+            trail:Destroy()
+            if hrp:FindFirstChild("TrailA0") then hrp.TrailA0:Destroy() end
+            if hrp:FindFirstChild("TrailA1") then hrp.TrailA1:Destroy() end
+        end
     end
 end
 
@@ -295,7 +376,7 @@ local function AddNotification(amount)
     end)
 end
 
--- Main Menu
+-- Main Menu (Высота 520)
 local Main = Instance.new("Frame"); Main.Size = UDim2.new(0, 520, 0, 520); Main.Position = UDim2.new(0.5, -260, 0.5, -260); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0, 8); MainCorner.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(45, 45, 60); MainStroke.Thickness = 2; MainStroke.Parent = Main
@@ -322,6 +403,7 @@ end
 
 local PageAimbot = CreateTab("Aimbot")
 local PageVisuals = CreateTab("Visuals")
+local PageCosmetics = CreateTab("Cosmetics") -- НОВАЯ ВКЛАДКА
 local PageOptimizer = CreateTab("Optimizer")
 local PageBinds = CreateTab("Binds")
 local PageMisc = CreateTab("Misc")
@@ -387,19 +469,21 @@ CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 270, fun
 CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 315, function(v) Config.DamageNumbers = v end)
 CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 350, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
 
+-- COSMETICS TAB (НОВОЕ)
+CreateToggle(PageCosmetics, "Third Person (3-й вид)", Config.ThirdPersonEnabled, 0, function(v) Config.ThirdPersonEnabled = v end)
+CreateSlider(PageCosmetics, "Camera Distance", 5, 30, Config.ThirdPersonDist, 35, function(v) Config.ThirdPersonDist = v end)
+CreateToggle(PageCosmetics, "China Hat (Шляпа)", Config.ChinaHatEnabled, 80, function(v) Config.ChinaHatEnabled = v end)
+CreateToggle(PageCosmetics, "Rainbow Trail (След)", Config.TrailEnabled, 115, function(v) Config.TrailEnabled = v end)
+
 -- Optimizer Tab
 CreateToggle(PageOptimizer, "Shakal Textures (Текстуры)", Config.OptTextures, 0, function(v) Config.OptTextures = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Transparency ~= nil then pcall(function() obj.Transparency = props.Transparency end) end end end end)
 CreateToggle(PageOptimizer, "Remove Particles (Частицы)", Config.OptParticles, 35, function(v) Config.OptParticles = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Enabled ~= nil then pcall(function() obj.Enabled = props.Enabled end) end end end end)
 CreateToggle(PageOptimizer, "Flat Graphics (Тени/Материалы)", Config.OptGraphics, 70, function(v) Config.OptGraphics = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Material ~= nil then pcall(function() obj.Material = props.Material; obj.CastShadow = props.CastShadow end) end end end end)
 
--- Misc Tab (Добавлен Jump Power)
+-- Misc Tab
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
 CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
 CreateSlider(PageMisc, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, function(v) Config.ESPMaxDist = v end)
-
--- НОВОЕ: Прыжок
-CreateToggle(PageMisc, "High Jump (Прыжок)", Config.JumpPowerEnabled, 120, function(v) Config.JumpPowerEnabled = v end)
-CreateSlider(PageMisc, "Jump Power (50-500)", 50, 500, Config.JumpPowerValue, 155, function(v) Config.JumpPowerValue = v end)
 
 -- Binds Tab
 local bindBtns = {}
@@ -434,10 +518,21 @@ local function FullCleanup()
     for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end
     OriginalHeadSizes = {}
     
-    -- Сброс прыжка
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        pcall(function() LocalPlayer.Character.Humanoid.JumpPower = 50 end)
+    -- Очистка косметики
+    if LocalPlayer.Character then
+        local head = LocalPlayer.Character:FindFirstChild("Head")
+        if head and head:FindFirstChild("CheatChinaHat") then head.CheatChinaHat:Destroy() end
+        local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            if hrp:FindFirstChild("CheatTrail") then hrp.CheatTrail:Destroy() end
+            if hrp:FindFirstChild("TrailA0") then hrp.TrailA0:Destroy() end
+            if hrp:FindFirstChild("TrailA1") then hrp.TrailA1:Destroy() end
+        end
     end
+    
+    -- Возврат камеры
+    LocalPlayer.CameraMode = Enum.CameraMode.Classic
+    LocalPlayer.CameraMaxZoomDistance = 128
     
     RestoreOptimization() 
     
@@ -445,7 +540,7 @@ local function FullCleanup()
     pcall(function() Lighting.ClockTime = 14; Lighting.Brightness = 1; Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128); Lighting.GlobalShadows = true; Lighting.FogEnd = 1000 end)
     print("[pisunRust v2] Unloaded. Everything restored.")
 end
-CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 205, FullCleanup, Color3.fromRGB(150, 30, 30))
+CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 115, FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
 -- СИСТЕМА УРОНА
@@ -590,12 +685,16 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
     
-    -- Прыжок
-    if Config.JumpPowerEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum.JumpPower ~= Config.JumpPowerValue then
-            pcall(function() hum.JumpPower = Config.JumpPowerValue end)
-        end
+    -- КОСМЕТИКА
+    pcall(UpdateCosmetics)
+    
+    -- 3-й вид (Принудительно)
+    if Config.ThirdPersonEnabled then
+        if LocalPlayer.CameraMode ~= Enum.CameraMode.Classic then LocalPlayer.CameraMode = Enum.CameraMode.Classic end
+        if LocalPlayer.CameraMaxZoomDistance ~= Config.ThirdPersonDist then LocalPlayer.CameraMaxZoomDistance = Config.ThirdPersonDist end
+    else
+        if LocalPlayer.CameraMode ~= Enum.CameraMode.Classic then LocalPlayer.CameraMode = Enum.CameraMode.Classic end
+        if LocalPlayer.CameraMaxZoomDistance ~= 128 then LocalPlayer.CameraMaxZoomDistance = 128 end
     end
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
@@ -603,7 +702,7 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nJump: %s | Light: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.JumpPowerEnabled and "ON" or "OFF", Config.Fullbright and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nHat: %s | Trail: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.ChinaHatEnabled and "ON" or "OFF", Config.TrailEnabled and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
@@ -622,4 +721,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V32 Loaded. Jump Power active.")
+print("[pisunRust v2] V33 Loaded. Cosmetics active.")
