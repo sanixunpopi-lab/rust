@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V25 - PURE DEALT LOG & PRO WEAPON ESP)
+    pisunRust v2 - OMNIX FRAMEWORK (V26 - WALL X-RAY)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -31,6 +31,9 @@ local Config = {
     DamageNumbers = true,
     ShowDamageLog = true,
     
+    XRayEnabled = false,     -- НОВОЕ: Рентген стен
+    XRayValue = 50,          -- НОВОЕ: Прозрачность (0-100)
+    
     AutoSprint = false,
     Fullbright = true,
     MenuKey = Enum.KeyCode.RightShift,
@@ -61,6 +64,7 @@ local ChamsObjects = {}
 local DamagePopups = {}
 local ActiveNotifications = {}
 local Connections = {}
+local OriginalTransparencies = {} -- Для хранения изначальной прозрачности стен
 
 -- ============================================================================
 -- FULLBRIGHT
@@ -81,20 +85,75 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ПОИСК И СОКРАЩЕНИЕ ОРУЖИЯ (УЛУЧШЕННЫЙ)
+-- СИСТЕМА X-RAY (ПРОСВЕЧИВАНИЕ СТЕН)
+-- ============================================================================
+local function ApplyXRay()
+    if State.Unloaded then return end
+    
+    if Config.XRayEnabled then
+        local targetModifier = 1 - (Config.XRayValue / 100) -- 100 -> 0 (прозрачный), 0 -> 1 (непрозрачный)
+        
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                -- Проверяем, чтобы это не был игрок, оружие или местный персонаж
+                local isCharacter = false
+                local parent = obj.Parent
+                while parent do
+                    if parent:IsA("Model") and parent:FindFirstChildOfClass("Humanoid") then
+                        isCharacter = true
+                        break
+                    end
+                    if parent:IsA("Tool") or parent:IsA("Accessory") then
+                        isCharacter = true
+                        break
+                    end
+                    parent = parent.Parent
+                end
+                
+                -- Если это не персонаж и не оружие, делаем прозрачным
+                if not isCharacter then
+                    if not OriginalTransparencies[obj] then
+                        OriginalTransparencies[obj] = obj.LocalTransparencyModifier
+                    end
+                    pcall(function()
+                        obj.LocalTransparencyModifier = targetModifier
+                    end)
+                end
+            end
+        end
+    else
+        -- Восстанавливаем стены, если выключили
+        for obj, origMod in pairs(OriginalTransparencies) do
+            if obj and obj.Parent then
+                pcall(function()
+                    obj.LocalTransparencyModifier = origMod
+                end)
+            end
+        end
+        OriginalTransparencies = {}
+    end
+end
+
+-- Запускаем обновление рентгена раз в секунду (чтобы не лагало)
+task.spawn(function()
+    while not State.Unloaded do
+        if Config.XRayEnabled then
+            ApplyXRay()
+        end
+        task.wait(1)
+    end
+end)
+
+-- ============================================================================
+-- ПОИСК И СОКРАЩЕНИЕ ОРУЖИЯ
 -- ============================================================================
 local function GetWeaponName(character)
-    -- 1. Стандартный Tool
     local tool = character:FindFirstChildOfClass("Tool")
     if tool then return tool.Name end
-    
-    -- 2. Ищем в руках (RightHand / LeftHand)
     local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
     if rightHand then
         local toolInHand = rightHand:FindFirstChildOfClass("Tool")
         if toolInHand then return toolInHand.Name end
-        
-        -- 3. Кастомные модели оружия (ищем по ключевым словам)
         for _, child in pairs(rightHand:GetChildren()) do
             if child:IsA("Model") or child:IsA("Part") or child:IsA("MeshPart") then
                 local name = string.lower(child.Name)
@@ -104,12 +163,9 @@ local function GetWeaponName(character)
             end
         end
     end
-    
-    -- 4. Ищем вообще везде внутри персонажа
     for _, v in pairs(character:GetDescendants()) do
         if v:IsA("Tool") then return v.Name end
     end
-    
     return nil
 end
 
@@ -124,7 +180,6 @@ local function GetShortWeaponName(toolName)
         ["Salvaged Sword"] = "Sword", ["Rock"] = "Rock", ["Torch"] = "Torch"
     }
     if mappings[toolName] then return mappings[toolName] end
-    
     local words = {}
     for word in string.gmatch(toolName, "%a+") do table.insert(words, word) end
     if #words > 1 then
@@ -168,7 +223,7 @@ local FeaturesLabel = Instance.new("TextLabel")
 FeaturesLabel.Size = UDim2.new(1, -10, 0, 35); FeaturesLabel.Position = UDim2.new(0, 5, 0, 45); FeaturesLabel.BackgroundTransparency = 1
 FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nChams: ON | Light: ON"; FeaturesLabel.Font = Enum.Font.GothamSemibold; FeaturesLabel.TextSize = 12; FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left; FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top; FeaturesLabel.Parent = TopHUD
 
--- Меню урона (ТОЛЬКО НАНЕСЕННЫЙ)
+-- Меню урона
 local DamageLogPanel = Instance.new("Frame")
 DamageLogPanel.Size = UDim2.new(0, 180, 0, 160); DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80)
 DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20); DamageLogPanel.BackgroundTransparency = 0.3; DamageLogPanel.BorderSizePixel = 0; DamageLogPanel.Visible = Config.ShowDamageLog; DamageLogPanel.Parent = ScreenGui
@@ -187,20 +242,16 @@ local function AddNotification(amount)
     if not Config.ShowDamageLog or State.Unloaded then return end
     amount = math.floor(amount)
     if amount <= 0 then return end
-    
     local bar = Instance.new("Frame")
     bar.Size = UDim2.new(1, 0, 0, 24); bar.BackgroundColor3 = Color3.fromRGB(25, 25, 30); bar.BackgroundTransparency = 0.2; bar.BorderSizePixel = 0; bar.Parent = DLContainer
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 4); corner.Parent = bar
     local indicator = Instance.new("Frame"); indicator.Size = UDim2.new(0, 4, 1, 0); indicator.BackgroundColor3 = Color3.fromRGB(50, 255, 50); indicator.BorderSizePixel = 0; indicator.Parent = bar
     local indCorner = Instance.new("UICorner"); indCorner.CornerRadius = UDim.new(0, 4); indCorner.Parent = indicator
-    
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, -10, 1, 0); label.Position = UDim2.new(0, 8, 0, 0); label.BackgroundTransparency = 1
     label.Text = "Dealt: -" .. amount; label.TextColor3 = Color3.fromRGB(50, 255, 50); label.Font = Enum.Font.GothamSemibold; label.TextSize = 13; label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = bar
-    
     table.insert(ActiveNotifications, bar)
     if #ActiveNotifications > 3 then local oldest = table.remove(ActiveNotifications, 1); oldest:Destroy() end
-    
     task.spawn(function()
         task.wait(3)
         if bar and bar.Parent then
@@ -298,12 +349,21 @@ local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 17
     methodBtn.Text = "Method: " .. Config.AimbotMethod
 end)
 
+-- ВКЛАДКА VISUALS (Обновлена под X-RAY)
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
 CreateToggle(PageVisuals, "Chams", Config.ChamsEnabled, 70, function(v) Config.ChamsEnabled = v end)
-CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 105, function(v) Config.DamageNumbers = v end)
-CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 140, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
-CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 175, function(v) Config.ESPMaxDist = v end)
+CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, 105, function(v) 
+    Config.XRayEnabled = v
+    ApplyXRay()
+end)
+CreateSlider(PageVisuals, "Wall Transparency (0-100)", 0, 100, Config.XRayValue, 140, function(v) 
+    Config.XRayValue = v 
+    if Config.XRayEnabled then ApplyXRay() end
+end)
+CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 190, function(v) Config.DamageNumbers = v end)
+CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 225, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
+CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 260, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
 CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
@@ -322,7 +382,7 @@ CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
 
 -- ============================================================================
--- UNLOAD
+-- UNLOAD (СБРОС ВСЕХ НАСТРОЕК И ВОССТАНОВЛЕНИЕ СТЕН)
 -- ============================================================================
 local function FullCleanup()
     State.Unloaded = true
@@ -341,13 +401,22 @@ local function FullCleanup()
     ChamsObjects = {}
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     DamagePopups = {}
+    
+    -- ВОССТАНАВЛИВАЕМ СТЕНЫ
+    for obj, origMod in pairs(OriginalTransparencies) do
+        if obj and obj.Parent then
+            pcall(function() obj.LocalTransparencyModifier = origMod end)
+        end
+    end
+    OriginalTransparencies = {}
+    
     pcall(function() keyrelease(Enum.KeyCode.LeftShift) end)
     pcall(function()
         Lighting.ClockTime = 14; Lighting.Brightness = 1
         Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
         Lighting.GlobalShadows = true; Lighting.FogEnd = 1000
     end)
-    print("[pisunRust v2] Unloaded.")
+    print("[pisunRust v2] Unloaded. Walls restored.")
 end
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, FullCleanup, Color3.fromRGB(150, 30, 30))
 
@@ -377,7 +446,6 @@ local function TrackPlayer(p)
                     if newHealth < oldHealth then
                         local dmg = oldHealth - newHealth
                         local head = char:FindFirstChild("Head")
-                        -- Показываем цифру над собой, но в лог НЕ пишем
                         if head then SpawnDamageNumber(head.Position + Vector3.new(0, 2, 0), dmg, true) end
                     end
                     hum:SetAttribute("LastHealth", newHealth)
@@ -397,15 +465,11 @@ local function TrackPlayer(p)
                 if newHealth < oldHealth then
                     local dmg = oldHealth - newHealth
                     local head = char:FindFirstChild("Head")
-                    
-                    -- ФИКС: Проверяем, смотрим ли мы на цель, чтобы записать урон ТОЛЬКО от нас
                     if head and dmg > 0 then
                         local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
                         if onScreen and screenPos.Z > 0 then
                             local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
                             local distToCenter = (center - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
-                            
-                            -- Если цель в радиусе 250 пикселей от нашего прицела, считаем, что это МЫ попали
                             if distToCenter < 250 then
                                 SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false)
                                 AddNotification(dmg) 
@@ -627,9 +691,9 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor
     FeaturesLabel.TextColor3 = RainbowColor
     
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nChams: %s | Light: %s", 
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nX-Ray: %s | Light: %s", 
         Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF",
-        Config.ChamsEnabled and "ON" or "OFF", Config.Fullbright and "ON" or "OFF"
+        Config.XRayEnabled and "ON" or "OFF", Config.Fullbright and "ON" or "OFF"
     )
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
@@ -670,4 +734,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V25 Loaded. Damage Log strictly for user's damage.")
+print("[pisunRust v2] V26 Loaded. Wall X-Ray active.")
