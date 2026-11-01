@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V40 - ITEM ESP & FILTER)
+    pisunRust v2 - OMNIX FRAMEWORK (V42 - WALLSHOT & ESP FIX)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -23,6 +23,7 @@ local Config = {
     Smoothness = 0.25,
     VisibleAim = true,
     Prediction = true,
+    WallshotEnabled = false, -- НОВОЕ: Стрельба через стены
     
     ESPEnabled = true,
     ESPMaxDist = 1000,
@@ -34,11 +35,11 @@ local Config = {
     PlayerChamsEnabled = true, 
     ESPBoxHue = 0,             
     
-    -- ITEM ESP (РЕНТГЕН НА ЛУТ)
+    -- ITEM ESP
     ItemESPEnabled = true,
-    ItemESPMaxDist = 300,      -- Радиус поиска предметов
-    ItemESPFilter = "",        -- Фильтр (пусто = все)
-    ItemESPColorHue = 120,     -- Зеленый по умолчанию
+    ItemESPMaxDist = 300,      
+    ItemESPFilter = "",        
+    ItemESPColorHue = 120,     
     
     XRayEnabled = false,
     XRayValue = 50,          
@@ -78,13 +79,45 @@ local State = {
 
 local ESPObjects = {}
 local ChamsObjects = {}
-local ItemESPObjects = {} -- Для рентгена предметов
+local ItemESPObjects = {} 
 local DamagePopups = {}
 local ActiveNotifications = {}
 local Connections = {}
 local OriginalTransparencies = {}
 local OriginalHeadSizes = {}
 local OriginalProps = {} 
+
+-- ============================================================================
+-- WALLSHOT (ХУК ЛУЧЕЙ)
+-- ============================================================================
+if type(hookfunction) == "function" then
+    local oldRaycast = workspace.Raycast
+    workspace.Raycast = function(self, origin, direction, params)
+        if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
+            -- Создаем параметры, которые видят ТОЛЬКО игроков
+            local newParams = RaycastParams.new()
+            newParams.FilterType = Enum.RaycastFilterType.Include
+            newParams.FilterDescendantsInstances = {}
+            
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character then
+                    table.insert(newParams.FilterDescendantsInstances, p.Character)
+                end
+            end
+            
+            -- Пускаем луч сквозь стены
+            local result = oldRaycast(self, origin, direction, newParams)
+            if result and result.Instance then
+                -- Если луч попал в игрока, возвращаем этот результат (игра думает, что стены нет)
+                return result
+            end
+        end
+        -- Если Wallshot выключен или за стеной никого нет, стреляем как обычно
+        return oldRaycast(self, origin, direction, params)
+    end
+else
+    print("[pisunRust v2] Внимание: Ваш экзекьютор не поддерживает hookfunction. Wallshot не будет работать.")
+end
 
 -- ============================================================================
 -- FULLBRIGHT
@@ -105,21 +138,20 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ITEM ESP (РЕНТГЕН НА ПРЕДМЕТЫ)
+-- ITEM ESP (БЕЗ ЛИМИТА HIGHLIGHT)
 -- ============================================================================
 local function UpdateItemESP()
     if State.Unloaded then return end
     
-    -- Очистка мертвых/далеких предметов
-    for item, hl in pairs(ItemESPObjects) do
+    for item, esp in pairs(ItemESPObjects) do
         if not item or not item.Parent or not Config.ItemESPEnabled then
-            hl:Destroy()
+            esp.Box:Remove(); esp.Text:Remove()
             ItemESPObjects[item] = nil
         else
             local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             local itemPart = item:IsA("BasePart") and item or item:FindFirstChildWhichIsA("BasePart")
             if myRoot and itemPart and (itemPart.Position - myRoot.Position).Magnitude > Config.ItemESPMaxDist then
-                hl:Destroy()
+                esp.Box:Remove(); esp.Text:Remove()
                 ItemESPObjects[item] = nil
             end
         end
@@ -139,8 +171,6 @@ local function UpdateItemESP()
                 local dist = (part.Position - myRoot.Position).Magnitude
                 if dist <= Config.ItemESPMaxDist then
                     local objName = string.lower(obj.Name)
-                    
-                    -- Проверка на стандартный лут или кастомный фильтр
                     local isLoot = false
                     if filter ~= "" then
                         if string.find(objName, filter) then isLoot = true end
@@ -150,25 +180,32 @@ local function UpdateItemESP()
                         end
                     end
 
-                    if isLoot and not ItemESPObjects[obj] then
-                        local hl = Instance.new("Highlight")
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        hl.FillTransparency = 0.5
-                        hl.OutlineTransparency = 0
-                        hl.FillColor = itemColor
-                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        hl.Parent = obj
-                        ItemESPObjects[obj] = hl
+                    if isLoot then
+                        if not ItemESPObjects[obj] then
+                            local box = Drawing.new("Square")
+                            box.Thickness = 1; box.Color = itemColor; box.Filled = false; box.Visible = false
+                            local text = Drawing.new("Text")
+                            text.Size = 12; text.Center = true; text.Outline = true; text.Color = itemColor; text.Visible = false
+                            ItemESPObjects[obj] = {Box = box, Text = text, Part = part}
+                        end
+                        
+                        local esp = ItemESPObjects[obj]
+                        esp.Box.Color = itemColor; esp.Text.Color = itemColor
+                        
+                        local screenPos, onScreen = Camera:WorldToViewportPoint(esp.Part.Position)
+                        if onScreen and screenPos.Z > 0 then
+                            esp.Box.Size = Vector2.new(10, 10)
+                            esp.Box.Position = Vector2.new(screenPos.X - 5, screenPos.Y - 5)
+                            esp.Box.Visible = true
+                            esp.Text.Text = "[" .. math.floor(dist) .. "m] " .. obj.Name
+                            esp.Text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                            esp.Text.Visible = true
+                        else
+                            esp.Box.Visible = false; esp.Text.Visible = false
+                        end
                     end
                 end
             end
-        end
-    end
-    
-    -- Обновление цвета, если изменили ползунок
-    for _, hl in pairs(ItemESPObjects) do
-        if hl and hl.Parent then
-            hl.FillColor = itemColor
         end
     end
 end
@@ -292,7 +329,7 @@ task.spawn(function()
 end)
 
 -- ============================================================================
--- ОРУЖИЕ (ДЛЯ ESP ИГРОКОВ)
+-- ОРУЖИЕ (ДЛЯ ESP)
 -- ============================================================================
 local function GetWeaponName(character)
     local tool = character:FindFirstChildOfClass("Tool")
@@ -465,11 +502,12 @@ end
 -- Aimbot Tab
 CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, 0, function(v) Config.AimbotEnabled = v end)
 CreateToggle(PageAimbot, "Visible Aim", Config.VisibleAim, 35, function(v) Config.VisibleAim = v end)
-CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 70, function(v) Config.FOV = v end)
-CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 120, function(v) Config.Smoothness = v / 100 end)
-local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 170, function() Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"; methodBtn.Text = "Method: " .. Config.AimbotMethod end)
+CreateToggle(PageAimbot, "Wallshot (Стрельба сквозь стены)", Config.WallshotEnabled, 70, function(v) Config.WallshotEnabled = v end) -- НОВАЯ КНОПКА
+CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 105, function(v) Config.FOV = v end)
+CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 155, function(v) Config.Smoothness = v / 100 end)
+local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 205, function() Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"; methodBtn.Text = "Method: " .. Config.AimbotMethod end)
 
--- Visuals Tab (БЕЗ SNAPLINES, С ITEM ESP)
+-- Visuals Tab
 CreateToggle(PageVisuals, "Player ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
 CreateToggle(PageVisuals, "Player Chams (Green/Red)", Config.PlayerChamsEnabled, 70, function(v) Config.PlayerChamsEnabled = v end)
@@ -527,7 +565,7 @@ local function FullCleanup()
     for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
     ChamsObjects = {}
     
-    for item, hl in pairs(ItemESPObjects) do pcall(function() hl:Destroy() end) end
+    for item, esp in pairs(ItemESPObjects) do pcall(function() esp.Box:Remove(); esp.Text:Remove() end) end
     ItemESPObjects = {}
     
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
@@ -605,10 +643,24 @@ local function CleanupESP(p)
     end); ESPObjects[p] = nil end
 end
 
-Players.PlayerRemoving:Connect(function(p) 
-    CleanupESP(p); 
+local function CleanupChams(p)
     if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end
+end
+
+Players.PlayerRemoving:Connect(function(p) 
+    CleanupESP(p); CleanupChams(p)
     if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end 
+end)
+
+for _, p in pairs(Players:GetPlayers()) do
+    p.CharacterAdded:Connect(function()
+        CleanupESP(p); CleanupChams(p)
+    end)
+end
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function()
+        CleanupESP(p); CleanupChams(p)
+    end)
 end)
 
 local function UpdateESP()
@@ -622,64 +674,70 @@ local function UpdateESP()
         return
     end
     
-    for p, _ in pairs(ESPObjects) do if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then CleanupESP(p) end end
-    for p, _ in pairs(ChamsObjects) do if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end end
-    
     local espColor = Color3.fromHSV(Config.ESPBoxHue / 360, 1, 1)
     
     for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("Head") then
-            local hum = p.Character.Humanoid; local hrp = p.Character:FindFirstChild("HumanoidRootPart"); local head = p.Character:FindFirstChild("Head")
-            if hum.Health > 0 and hrp and head then
-                local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                local dist = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
-                
-                if dist <= Config.ESPMaxDist then
-                    if Config.PlayerChamsEnabled then
-                        if not ChamsObjects[p] or ChamsObjects[p].Parent ~= p.Character then
-                            if ChamsObjects[p] then ChamsObjects[p]:Destroy() end
-                            local chams = Instance.new("Highlight")
-                            chams.FillTransparency = 0.5
-                            chams.OutlineTransparency = 0
-                            chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            chams.Parent = p.Character
-                            ChamsObjects[p] = chams
-                        end
-                        local chams = ChamsObjects[p]
-                        chams.Enabled = true
-                        
-                        if tick() - (chams:GetAttribute("LastCheck") or 0) > 0.1 then
-                            chams:SetAttribute("LastCheck", tick())
-                            if IsVisible(p.Character) then
-                                chams.FillColor = Color3.fromRGB(0, 255, 0)
-                                chams.OutlineColor = Color3.fromRGB(0, 255, 0)
-                            else
-                                chams.FillColor = Color3.fromRGB(255, 0, 0)
-                                chams.OutlineColor = Color3.fromRGB(255, 255, 255)
+        if p ~= LocalPlayer then
+            local char = p.Character
+            if char and char:FindFirstChild("Humanoid") and char:FindFirstChild("Head") then
+                local hum = char.Humanoid; local hrp = char:FindFirstChild("HumanoidRootPart"); local head = char:FindFirstChild("Head")
+                if hum.Health > 0 and hrp and head then
+                    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    local dist = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
+                    
+                    if dist <= Config.ESPMaxDist then
+                        if Config.PlayerChamsEnabled then
+                            if not ChamsObjects[p] or ChamsObjects[p].Parent ~= char then
+                                CleanupChams(p)
+                                local chams = Instance.new("Highlight")
+                                chams.FillTransparency = 0.5
+                                chams.OutlineTransparency = 0
+                                chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                chams.Parent = char
+                                ChamsObjects[p] = chams
                             end
+                            local chams = ChamsObjects[p]
+                            chams.Enabled = true
+                            
+                            if tick() - (chams:GetAttribute("LastCheck") or 0) > 0.1 then
+                                chams:SetAttribute("LastCheck", tick())
+                                if IsVisible(char) then
+                                    chams.FillColor = Color3.fromRGB(0, 255, 0)
+                                    chams.OutlineColor = Color3.fromRGB(0, 255, 0)
+                                else
+                                    chams.FillColor = Color3.fromRGB(255, 0, 0)
+                                    chams.OutlineColor = Color3.fromRGB(255, 255, 255)
+                                end
+                            end
+                        else
+                            CleanupChams(p)
                         end
-                    elseif ChamsObjects[p] then
-                        ChamsObjects[p]:Destroy()
-                        ChamsObjects[p] = nil
-                    end
 
-                    if Config.ESPEnabled then
-                        if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
-                        local esp = ESPObjects[p]
-                        local screenHead, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
-                        local screenRoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
-                        
-                        if onScreen and screenHead.Z > 0 then
-                            local height = math.abs(screenHead.Y - screenRoot.Y); local width = height * 0.55; local x, y = screenHead.X - (width / 2), screenHead.Y; local length = width * 0.25
-                            for i=1, 4 do esp["Box"..i].Color = espColor end
-                            esp.Box1.From = Vector2.new(x, y); esp.Box1.To = Vector2.new(x + length, y); esp.Box2.From = Vector2.new(x, y); esp.Box2.To = Vector2.new(x, y + length); esp.Box3.From = Vector2.new(x + width, y + height); esp.Box3.To = Vector2.new(x + width - length, y + height); esp.Box4.From = Vector2.new(x + width, y + height); esp.Box4.To = Vector2.new(x + width, y + height - length)
-                            esp.Box1.Visible = true; esp.Box2.Visible = true; esp.Box3.Visible = true; esp.Box4.Visible = true
-                            esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, y - 45); esp.Name.Visible = true; esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, y - 30); esp.Dist.Visible = true
-                            if Config.ESPWeapon then local weaponName = GetWeaponName(p.Character); if weaponName then esp.Weapon.Text = "[" .. GetShortWeaponName(weaponName) .. "]"; esp.Weapon.Position = Vector2.new(screenHead.X, y - 15); esp.Weapon.Visible = true else esp.Weapon.Visible = false end else esp.Weapon.Visible = false end
-                            local barWidth = 3; local barHeight = height; local barX = x - 6; esp.HealthBarBg.Size = Vector2.new(barWidth, barHeight); esp.HealthBarBg.Position = Vector2.new(barX, y); esp.HealthBarBg.Visible = true; local healthPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1); local fillHeight = barHeight * healthPercent; esp.HealthBarFill.Size = Vector2.new(barWidth, fillHeight); esp.HealthBarFill.Position = Vector2.new(barX, y + (barHeight - fillHeight)); if healthPercent > 0.5 then esp.HealthBarFill.Color = Color3.fromRGB(255 * (1 - (healthPercent - 0.5) * 2), 255, 0) else esp.HealthBarFill.Color = Color3.fromRGB(255, 255 * (healthPercent * 2), 0) end; esp.HealthBarFill.Visible = true
-                        else 
-                            esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false; esp.Weapon.Visible = false
+                        if Config.ESPEnabled then
+                            if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
+                            local esp = ESPObjects[p]
+                            local screenHead, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                            local screenRoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
+                            
+                            if onScreen and screenHead.Z > 0 then
+                                local height = math.abs(screenHead.Y - screenRoot.Y); local width = height * 0.55; local x, y = screenHead.X - (width / 2), screenHead.Y; local length = width * 0.25
+                                for i=1, 4 do esp["Box"..i].Color = espColor end
+                                esp.Box1.From = Vector2.new(x, y); esp.Box1.To = Vector2.new(x + length, y); esp.Box2.From = Vector2.new(x, y); esp.Box2.To = Vector2.new(x, y + length); esp.Box3.From = Vector2.new(x + width, y + height); esp.Box3.To = Vector2.new(x + width - length, y + height); esp.Box4.From = Vector2.new(x + width, y + height); esp.Box4.To = Vector2.new(x + width, y + height - length)
+                                esp.Box1.Visible = true; esp.Box2.Visible = true; esp.Box3.Visible = true; esp.Box4.Visible = true
+                                esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, y - 45); esp.Name.Visible = true; esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, y - 30); esp.Dist.Visible = true
+                                if Config.ESPWeapon then local weaponName = GetWeaponName(char); if weaponName then esp.Weapon.Text = "[" .. GetShortWeaponName(weaponName) .. "]"; esp.Weapon.Position = Vector2.new(screenHead.X, y - 15); esp.Weapon.Visible = true else esp.Weapon.Visible = false end else esp.Weapon.Visible = false end
+                                local barWidth = 3; local barHeight = height; local barX = x - 6; esp.HealthBarBg.Size = Vector2.new(barWidth, barHeight); esp.HealthBarBg.Position = Vector2.new(barX, y); esp.HealthBarBg.Visible = true; local healthPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1); local fillHeight = barHeight * healthPercent; esp.HealthBarFill.Size = Vector2.new(barWidth, fillHeight); esp.HealthBarFill.Position = Vector2.new(barX, y + (barHeight - fillHeight)); if healthPercent > 0.5 then esp.HealthBarFill.Color = Color3.fromRGB(255 * (1 - (healthPercent - 0.5) * 2), 255, 0) else esp.HealthBarFill.Color = Color3.fromRGB(255, 255 * (healthPercent * 2), 0) end; esp.HealthBarFill.Visible = true
+                            else 
+                                esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false; esp.Weapon.Visible = false
+                            end
+                        elseif ESPObjects[p] then
+                            ESPObjects[p].Box1.Visible = false; ESPObjects[p].Box2.Visible = false; ESPObjects[p].Box3.Visible = false; ESPObjects[p].Box4.Visible = false; ESPObjects[p].Name.Visible = false; ESPObjects[p].Dist.Visible = false; ESPObjects[p].HealthBarBg.Visible = false; ESPObjects[p].HealthBarFill.Visible = false; ESPObjects[p].Weapon.Visible = false
                         end
+                    else
+                        if ESPObjects[p] then
+                            ESPObjects[p].Box1.Visible = false; ESPObjects[p].Box2.Visible = false; ESPObjects[p].Box3.Visible = false; ESPObjects[p].Box4.Visible = false; ESPObjects[p].Name.Visible = false; ESPObjects[p].Dist.Visible = false; ESPObjects[p].HealthBarBg.Visible = false; ESPObjects[p].HealthBarFill.Visible = false; ESPObjects[p].Weapon.Visible = false
+                        end
+                        CleanupChams(p)
                     end
                 end
             end
@@ -735,7 +793,7 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
-    if Config.ItemESPEnabled then pcall(UpdateItemESP) end -- Обновление рентгена предметов
+    if Config.ItemESPEnabled then pcall(UpdateItemESP) end
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
     if State.Time >= 1 then State.FPS = math.floor(State.Frames / State.Time); State.Frames = 0; State.Time = 0 end
@@ -761,4 +819,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V40 Loaded. Item ESP with Filter active.")
+print("[pisunRust v2] V42 Loaded. Wallshot active.")
