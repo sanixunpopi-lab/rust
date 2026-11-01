@@ -1,5 +1,5 @@
 --[[
-    RUST CLONE CHEAT - OMNIX FRAMEWORK (1300+ строк)
+    RUST CLONE CHEAT - OMNIX FRAMEWORK (FIXED TABS)
     Полностью рабочий аимбот, ESP, Chams и система биндов.
     Меню: RightShift (Правый Shift)
 ]]
@@ -9,7 +9,6 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -37,7 +36,6 @@ local Config = {
     ESPMaxDist = 1000,
     
     ChamsEnabled = true,
-    ChamsVisible = true,
     ChamsStyle = "Visibility", -- "Visibility" или "Static"
     
     -- Misc
@@ -56,7 +54,7 @@ local State = {
     MenuOpen = true,
     HoldingKey = false,
     IsSprinting = false,
-    WaitingForKey = nil, -- Хранит название функции, для которой настраивается бинд
+    WaitingForKey = nil,
     ActiveTab = "Aimbot"
 }
 
@@ -65,13 +63,11 @@ local ESPObjects = {}
 local ChamsObjects = {}
 
 -- ============================================================================
--- СИСТЕМА КОНФИГОВ (СОХРАНЕНИЕ / ЗАГРУЗКА)
+-- СИСТЕМА КОНФИГОВ
 -- ============================================================================
 local function SaveConfig()
     local data = { Config = Config, Binds = {} }
-    for k, v in pairs(Binds) do
-        data.Binds[k] = tostring(v)
-    end
+    for k, v in pairs(Binds) do data.Binds[k] = tostring(v) end
     pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(data)) end)
 end
 
@@ -80,9 +76,7 @@ local function LoadConfig()
     local success, data = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end)
     if success and data then
         if data.Config then
-            for k, v in pairs(data.Config) do
-                if Config[k] ~= nil then Config[k] = v end
-            end
+            for k, v in pairs(data.Config) do if Config[k] ~= nil then Config[k] = v end end
         end
         if data.Binds then
             for k, v in pairs(data.Binds) do
@@ -95,13 +89,11 @@ local function LoadConfig()
         end
     end
 end
-
 pcall(LoadConfig)
 
 -- ============================================================================
--- БИБЛИОТЕКА UI (ФРЕЙМВОРК)
+-- БИБЛИОТЕКА UI
 -- ============================================================================
-local UI = {}
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "OmnixUI"
 ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui")
@@ -127,7 +119,6 @@ MainStroke.Color = Color3.fromRGB(45, 45, 60)
 MainStroke.Thickness = 2
 MainStroke.Parent = Main
 
--- Заголовок
 local Header = Instance.new("Frame")
 Header.Size = UDim2.new(1, 0, 0, 45)
 Header.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
@@ -148,7 +139,6 @@ Title.TextSize = 16
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
--- Меню вкладок
 local TabContainer = Instance.new("Frame")
 TabContainer.Size = UDim2.new(0, 130, 1, -45)
 TabContainer.Position = UDim2.new(0, 0, 0, 45)
@@ -163,11 +153,12 @@ ContentContainer.Parent = Main
 
 local Tabs = {}
 local Pages = {}
+local tabIndex = 0 -- ИСПРАВЛЕНО: счетчик для вкладок
 
 local function CreateTab(name)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -16, 0, 35)
-    btn.Position = UDim2.new(0, 8, 0, 8 + (#Tabs * 40))
+    btn.Position = UDim2.new(0, 8, 0, 8 + (tabIndex * 40)) -- ИСПРАВЛЕНО: используем tabIndex
     btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
     btn.Text = "  " .. name
     btn.TextColor3 = Color3.fromRGB(180, 180, 200)
@@ -188,6 +179,7 @@ local function CreateTab(name)
     
     Tabs[name] = btn
     Pages[name] = page
+    tabIndex = tabIndex + 1 -- Увеличиваем индекс
     
     btn.MouseButton1Click:Connect(function()
         for tName, tBtn in pairs(Tabs) do
@@ -305,18 +297,11 @@ local function CreateSlider(parent, text, min, max, default, posY, callback)
     end
     
     bar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            update(input)
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; update(input) end
     end)
-    
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            update(input)
-        end
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then update(input) end
     end)
-    
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
     end)
@@ -348,11 +333,18 @@ CreateToggle(PageAimbot, "Prediction (Упреждение)", Config.Prediction,
 CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 110, function(v) Config.FOV = v end)
 CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 160, function(v) Config.Smoothness = v / 100 end)
 
+local methodBtn = CreateButton(PageAimbot, "Aim Method: " .. Config.AimbotMethod, 210, function()
+    Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"
+    methodBtn.Text = "Aim Method: " .. Config.AimbotMethod
+end)
+
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "Chams (Подсветка)", Config.ChamsEnabled, 35, function(v) Config.ChamsEnabled = v end)
 CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 80, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint (Авто-бег)", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
+CreateButton(PageMisc, "SAVE CONFIG", 45, function() SaveConfig() end)
+CreateButton(PageMisc, "LOAD CONFIG", 85, function() LoadConfig() end)
 
 local bindBtns = {}
 local function CreateBindButton(parent, text, bindName, posY)
@@ -368,9 +360,6 @@ CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
 CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
 CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
 CreateBindButton(PageBinds, "Sprint Toggle", "Sprint", 120)
-
-CreateButton(PageMisc, "SAVE CONFIG", 45, function() SaveConfig() end)
-CreateButton(PageMisc, "LOAD CONFIG", 85, function() LoadConfig() end)
 
 Tabs["Aimbot"].MouseButton1Click:Fire()
 
@@ -397,63 +386,29 @@ local function IsVisible(targetChar)
     local RayParams = RaycastParams.new()
     RayParams.FilterType = Enum.RaycastFilterType.Exclude
     RayParams.FilterDescendantsInstances = {myChar, targetChar}
-
     local RayResult = workspace:Raycast(Camera.CFrame.Position, targetPart.Position - Camera.CFrame.Position, RayParams)
     return RayResult == nil
 end
 
 local function CreateESPObject()
     local esp = {}
-    esp.Box = Drawing.new("Square")
-    esp.Box.Thickness = 1
-    esp.Box.Color = Color3.fromRGB(255, 60, 60)
-    esp.Box.Filled = false
-    esp.Box.Visible = false
-
-    esp.Name = Drawing.new("Text")
-    esp.Name.Size = 14
-    esp.Name.Center = true
-    esp.Name.Outline = true
-    esp.Name.Color = Color3.fromRGB(255, 255, 255)
-    esp.Name.Visible = false
-
-    esp.Health = Drawing.new("Text")
-    esp.Health.Size = 12
-    esp.Health.Center = true
-    esp.Health.Outline = true
-    esp.Health.Color = Color3.fromRGB(0, 255, 0)
-    esp.Health.Visible = false
-
-    esp.Dist = Drawing.new("Text")
-    esp.Dist.Size = 12
-    esp.Dist.Center = true
-    esp.Dist.Outline = true
-    esp.Dist.Color = Color3.fromRGB(255, 200, 0)
-    esp.Dist.Visible = false
-
+    esp.Box = Drawing.new("Square"); esp.Box.Thickness = 1; esp.Box.Color = Color3.fromRGB(255, 60, 60); esp.Box.Filled = false; esp.Box.Visible = false
+    esp.Name = Drawing.new("Text"); esp.Name.Size = 14; esp.Name.Center = true; esp.Name.Outline = true; esp.Name.Color = Color3.fromRGB(255, 255, 255); esp.Name.Visible = false
+    esp.Health = Drawing.new("Text"); esp.Health.Size = 12; esp.Health.Center = true; esp.Health.Outline = true; esp.Health.Color = Color3.fromRGB(0, 255, 0); esp.Health.Visible = false
+    esp.Dist = Drawing.new("Text"); esp.Dist.Size = 12; esp.Dist.Center = true; esp.Dist.Outline = true; esp.Dist.Color = Color3.fromRGB(255, 200, 0); esp.Dist.Visible = false
     return esp
 end
 
 local function UpdateESP()
-    -- Очистка старых объектов
     for p, esp in pairs(ESPObjects) do
         if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
-            esp.Box:Remove()
-            esp.Name:Remove()
-            esp.Health:Remove()
-            esp.Dist:Remove()
-            ESPObjects[p] = nil
+            esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove(); ESPObjects[p] = nil
         end
     end
-
     for p, chams in pairs(ChamsObjects) do
-        if not p or not p.Parent or not p.Character then
-            chams:Destroy()
-            ChamsObjects[p] = nil
-        end
+        if not p or not p.Parent or not p.Character then chams:Destroy(); ChamsObjects[p] = nil end
     end
 
-    -- Отрисовка
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("Head") then
             local hum = p.Character.Humanoid
@@ -465,66 +420,36 @@ local function UpdateESP()
                 local dist = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
 
                 if dist <= Config.ESPMaxDist then
-                    -- CHAMS
                     if Config.ChamsEnabled then
                         if not ChamsObjects[p] or ChamsObjects[p].Parent ~= p.Character then
                             if ChamsObjects[p] then ChamsObjects[p]:Destroy() end
                             local chams = Instance.new("Highlight")
-                            chams.FillTransparency = 0.5
-                            chams.OutlineTransparency = 0
-                            chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            chams.Parent = p.Character
+                            chams.FillTransparency = 0.5; chams.OutlineTransparency = 0; chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; chams.Parent = p.Character
                             ChamsObjects[p] = chams
                         end
-
                         local chams = ChamsObjects[p]
                         if tick() - (chams:GetAttribute("LastCheck") or 0) > 0.1 then
                             chams:SetAttribute("LastCheck", tick())
-                            if IsVisible(p.Character) then
-                                chams.FillColor = Color3.fromRGB(0, 255, 0)
-                                chams.OutlineColor = Color3.fromRGB(0, 255, 0)
-                            else
-                                chams.FillColor = Color3.fromRGB(255, 0, 0)
-                                chams.OutlineColor = Color3.fromRGB(255, 255, 255)
-                            end
+                            if IsVisible(p.Character) then chams.FillColor = Color3.fromRGB(0, 255, 0); chams.OutlineColor = Color3.fromRGB(0, 255, 0)
+                            else chams.FillColor = Color3.fromRGB(255, 0, 0); chams.OutlineColor = Color3.fromRGB(255, 255, 255) end
                         end
-                    elseif ChamsObjects[p] then
-                        ChamsObjects[p]:Destroy()
-                        ChamsObjects[p] = nil
-                    end
+                    elseif ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end
 
-                    -- ESP
                     if Config.ESPEnabled then
                         if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
                         local esp = ESPObjects[p]
-
                         local screenHead, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
                         local screenRoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
 
                         if onScreen and screenHead.Z > 0 then
                             local height = math.abs(screenHead.Y - screenRoot.Y)
                             local width = height * 0.55
-
-                            esp.Box.Size = Vector2.new(width, height)
-                            esp.Box.Position = Vector2.new(screenHead.X - (width / 2), screenHead.Y)
-                            esp.Box.Visible = true
-
-                            esp.Name.Text = p.Name
-                            esp.Name.Position = Vector2.new(screenHead.X, screenHead.Y - 32)
-                            esp.Name.Visible = true
-
-                            esp.Health.Text = "HP: " .. math.floor(hum.Health)
-                            esp.Health.Position = Vector2.new(screenHead.X, screenHead.Y + height + 2)
-                            esp.Health.Visible = true
-
-                            esp.Dist.Text = "[" .. dist .. "m]"
-                            esp.Dist.Position = Vector2.new(screenHead.X, screenHead.Y - 18)
-                            esp.Dist.Visible = true
+                            esp.Box.Size = Vector2.new(width, height); esp.Box.Position = Vector2.new(screenHead.X - (width / 2), screenHead.Y); esp.Box.Visible = true
+                            esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, screenHead.Y - 32); esp.Name.Visible = true
+                            esp.Health.Text = "HP: " .. math.floor(hum.Health); esp.Health.Position = Vector2.new(screenHead.X, screenHead.Y + height + 2); esp.Health.Visible = true
+                            esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, screenHead.Y - 18); esp.Dist.Visible = true
                         else
-                            esp.Box.Visible = false
-                            esp.Name.Visible = false
-                            esp.Health.Visible = false
-                            esp.Dist.Visible = false
+                            esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false
                         end
                     end
                 end
@@ -548,27 +473,16 @@ local function GetTarget()
             local head = p.Character:FindFirstChild("Head")
 
             if hum.Health > 0 and hrp and head then
-                local targetPos = Vector3.new(0,0,0)
-                if Config.AimPart == "Head" then targetPos = head.Position
-                elseif Config.AimPart == "Torso" then targetPos = hrp.Position
-                else targetPos = (head.Position + hrp.Position) / 2 end
-
+                local targetPos = (Config.AimPart == "Head") and head.Position or hrp.Position
                 local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
 
                 if onScreen and screenPos.Z > 0 then
                     local dist = (screenCenter - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
-                    
                     if dist < shortestDist then
                         if Config.VisibleAim and not IsVisible(p.Character) then continue end
-                        
                         shortestDist = dist
                         local finalPos = targetPos
-                        
-                        if Config.Prediction then
-                            local velocity = hrp.AssemblyLinearVelocity
-                            finalPos = finalPos + (velocity * 0.15)
-                        end
-
+                        if Config.Prediction then finalPos = finalPos + (hrp.AssemblyLinearVelocity * 0.15) end
                         closest = { player = p, part = hrp, pos = finalPos }
                     end
                 end
@@ -579,131 +493,67 @@ local function GetTarget()
 end
 
 -- ============================================================================
--- ОБРАБОТКА ВВОДА (БИНДЫ)
+-- ОБРАБОТКА ВВОДА
 -- ============================================================================
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    -- Меню открывается всегда
-    if input.KeyCode == Config.MenuKey then
-        State.MenuOpen = not State.MenuOpen
-        Main.Visible = State.MenuOpen
-        return
-    end
-
-    -- Ожидание настройки бинда
+    if input.KeyCode == Config.MenuKey then State.MenuOpen = not State.MenuOpen; Main.Visible = State.MenuOpen; return end
     if State.WaitingForKey then
+        local keyName = ""
         if input.UserInputType == Enum.UserInputType.Keyboard then
             Binds[State.WaitingForKey] = input.KeyCode
-            bindBtns[State.WaitingForKey].Text = State.WaitingForKey .. ": " .. tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
+            keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
         else
             Binds[State.WaitingForKey] = input.UserInputType
-            bindBtns[State.WaitingForKey].Text = State.WaitingForKey .. ": " .. tostring(input.UserInputType):gsub("Enum.UserInputType.", "")
+            keyName = tostring(input.UserInputType):gsub("Enum.UserInputType.", "")
         end
+        bindBtns[State.WaitingForKey].Text = State.WaitingForKey .. ": " .. keyName
         bindBtns[State.WaitingForKey].TextColor3 = Color3.fromRGB(200, 200, 220)
         State.WaitingForKey = nil
         return
     end
-
-    -- Если кликаем по меню, игнорируем
     if gameProcessed then return end
 
-    -- Проверка биндов
-    if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then
-        State.HoldingKey = true
-    elseif input.UserInputType == Binds.ESP or input.KeyCode == Binds.ESP then
-        Config.ESPEnabled = not Config.ESPEnabled
-    elseif input.UserInputType == Binds.Chams or input.KeyCode == Binds.Chams then
-        Config.ChamsEnabled = not Config.ChamsEnabled
-    elseif input.UserInputType == Binds.Sprint or input.KeyCode == Binds.Sprint then
-        Config.AutoSprint = not Config.AutoSprint
-    end
+    if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = true
+    elseif input.UserInputType == Binds.ESP or input.KeyCode == Binds.ESP then Config.ESPEnabled = not Config.ESPEnabled
+    elseif input.UserInputType == Binds.Chams or input.KeyCode == Binds.Chams then Config.ChamsEnabled = not Config.ChamsEnabled
+    elseif input.UserInputType == Binds.Sprint or input.KeyCode == Binds.Sprint then Config.AutoSprint = not Config.AutoSprint end
 end)
 
 UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then
-        State.HoldingKey = false
-    end
+    if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = false end
 end)
 
 -- ============================================================================
--- ГЛАВНЫЕ ЦИКЛЫ (ИСПРАВЛЕНИЕ АИМБОТА И ESP)
+-- ГЛАВНЫЕ ЦИКЛЫ
 -- ============================================================================
-
--- Отрисовка ESP и FOV (Каждый кадр)
 RunService.RenderStepped:Connect(function()
-    -- FOV
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Config.FOV
     FOVCircle.Visible = Config.AimbotEnabled
 
-    -- ESP
-    if Config.ESPEnabled or Config.ChamsEnabled then
-        pcall(UpdateESP)
-    end
+    if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
 
-    -- Авто-бег
     if Config.AutoSprint then
-        if not State.IsSprinting then
-            keypress(Enum.KeyCode.LeftShift)
-            State.IsSprinting = true
-        end
+        if not State.IsSprinting then keypress(Enum.KeyCode.LeftShift); State.IsSprinting = true end
     else
-        if State.IsSprinting then
-            keyrelease(Enum.KeyCode.LeftShift)
-            State.IsSprinting = false
-        end
+        if State.IsSprinting then keyrelease(Enum.KeyCode.LeftShift); State.IsSprinting = false end
     end
 end)
 
--- ИСПРАВЛЕННЫЙ АИМБОТ (Работает даже с блокировкой камеры)
-local AimbotLogic = RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function()
     if not Config.AimbotEnabled or not State.HoldingKey then return end
-
     local target = GetTarget()
     if target then
-        -- Метод 1: Прямое вращение камеры (стандартный)
         if Config.AimbotMethod == "Camera" then
             local camPos = Camera.CFrame.Position
             local targetCFrame = CFrame.new(camPos, target.pos)
             Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, Config.Smoothness)
-        
-        -- Метод 2: Движение самой мыши (пробивает блокировки ShiftLock)
-        elseif Config.AimbotMethod == "Mouse" then
+        elseif Config.AimbotMethod == "Mouse" and mousemoverel then
             local screenPos = Camera:WorldToViewportPoint(target.pos)
             local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-            
-            -- Если у экзекьютора есть mousemoverel, используем его
-            if mousemoverel then
-                local deltaX = (screenPos.X - center.X) * Config.Smoothness
-                local deltaY = (screenPos.Y - center.Y) * Config.Smoothness
-                mousemoverel(deltaX, deltaY)
-            else
-                -- Если нет, используем камеру по умолчанию
-                local camPos = Camera.CFrame.Position
-                local targetCFrame = CFrame.new(camPos, target.pos)
-                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, Config.Smoothness)
-            end
+            mousemoverel((screenPos.X - center.X) * Config.Smoothness, (screenPos.Y - center.Y) * Config.Smoothness)
         end
     end
 end)
-
--- Переключение метода аимбота прямо в меню
-CreateButton(PageAimbot, "Switch Aim Method (" .. Config.AimbotMethod .. ")", 210, function()
-    if Config.AimbotMethod == "Camera" then
-        Config.AimbotMethod = "Mouse"
-    else
-        Config.AimbotMethod = "Camera"
-    end
-    -- Обновляем текст кнопки
-    local btn = Pages["Aimbot"]:FindFirstChildWhichIsA("TextButton", true)
-end)
-
--- Обновление текста кнопки метода при клике
-for _, child in pairs(PageAimbot:GetChildren()) do
-    if child:IsA("TextButton") and string.find(child.Text, "Switch Aim Method") then
-        child.MouseButton1Click:Connect(function()
-            child.Text = "Switch Aim Method (" .. Config.AimbotMethod .. ")"
-        end)
-    end
-end
 
 print("[OMNIX] Скрипт загружен. Меню: RightShift")
