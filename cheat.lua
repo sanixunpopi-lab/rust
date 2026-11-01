@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V20 - RAINBOW HUD & FPS)
+    pisunRust v2 - OMNIX FRAMEWORK (V21 - NOTIFICATION BARS)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -48,7 +48,6 @@ local State = {
     IsSprinting = false,
     WaitingForKey = nil,
     Unloaded = false,
-    Stats = { Dealt = 0, Taken = 0 },
     
     -- Переменные для HUD
     FPS = 60,
@@ -60,6 +59,7 @@ local State = {
 local ESPObjects = {}
 local ChamsObjects = {}
 local DamagePopups = {}
+local ActiveNotifications = {}
 local Connections = {}
 
 -- ============================================================================
@@ -106,7 +106,6 @@ TopHUDStroke.Color = Color3.fromRGB(50, 50, 65)
 TopHUDStroke.Thickness = 1
 TopHUDStroke.Parent = TopHUD
 
--- Название чита
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -10, 0, 25)
 TitleLabel.Position = UDim2.new(0, 5, 0, 5)
@@ -117,7 +116,6 @@ TitleLabel.TextSize = 18
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TopHUD
 
--- FPS
 local FPSLabel = Instance.new("TextLabel")
 FPSLabel.Size = UDim2.new(1, -10, 0, 20)
 FPSLabel.Position = UDim2.new(0, 5, 0, 25)
@@ -128,7 +126,6 @@ FPSLabel.TextSize = 14
 FPSLabel.TextXAlignment = Enum.TextXAlignment.Left
 FPSLabel.Parent = TopHUD
 
--- Список активных функций
 local FeaturesLabel = Instance.new("TextLabel")
 FeaturesLabel.Size = UDim2.new(1, -10, 0, 35)
 FeaturesLabel.Position = UDim2.new(0, 5, 0, 45)
@@ -140,32 +137,89 @@ FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left
 FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top
 FeaturesLabel.Parent = TopHUD
 
--- ================= HUD УРОНА (СНИЗУ) =================
-local BottomHUD = Instance.new("Frame")
-BottomHUD.Size = UDim2.new(0, 300, 0, 40)
-BottomHUD.Position = UDim2.new(0.5, -150, 1, -60)
-BottomHUD.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-BottomHUD.BackgroundTransparency = 0.2
-BottomHUD.BorderSizePixel = 0
-BottomHUD.Parent = ScreenGui
+-- ================= НОВАЯ СИСТЕМА УВЕДОМЛЕНИЙ (ПОЛОСКИ) =================
+local NotificationHolder = Instance.new("Frame")
+NotificationHolder.Size = UDim2.new(0, 250, 0, 120)
+NotificationHolder.Position = UDim2.new(0.5, -125, 1, -180) -- Снизу по центру
+NotificationHolder.BackgroundTransparency = 1
+NotificationHolder.Parent = ScreenGui
 
-local BottomHUDCorner = Instance.new("UICorner")
-BottomHUDCorner.CornerRadius = UDim.new(0, 8)
-BottomHUDCorner.Parent = BottomHUD
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Parent = NotificationHolder
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+UIListLayout.Padding = UDim.new(0, 5)
 
-local BottomHUDStroke = Instance.new("UIStroke")
-BottomHUDStroke.Color = Color3.fromRGB(50, 50, 65)
-BottomHUDStroke.Thickness = 1
-BottomHUDStroke.Parent = BottomHUD
-
-local BottomHUDText = Instance.new("TextLabel")
-BottomHUDText.Size = UDim2.new(1, 0, 1, 0)
-BottomHUDText.BackgroundTransparency = 1
-BottomHUDText.Text = "Dealt: 0  |  Taken: 0"
-BottomHUDText.TextColor3 = Color3.fromRGB(255, 255, 255)
-BottomHUDText.Font = Enum.Font.GothamBold
-BottomHUDText.TextSize = 16
-BottomHUDText.Parent = BottomHUD
+-- Функция создания уведомления
+local function AddNotification(amount, isTaken)
+    if State.Unloaded then return end
+    amount = math.floor(amount)
+    if amount <= 0 then return end
+    
+    local isDealt = not isTaken
+    local mainColor = isDealt and Color3.fromRGB(50, 255, 50) or Color3.fromRGB(255, 50, 50)
+    local textStr = isDealt and ("Dealt: -" .. amount) or ("Taken: +" .. amount)
+    
+    -- Создаем полоску
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(1, 0, 0, 25)
+    bar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    bar.BackgroundTransparency = 0.3
+    bar.BorderSizePixel = 0
+    bar.Parent = NotificationHolder
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = bar
+    
+    -- Цветной индикатор слева
+    local indicator = Instance.new("Frame")
+    indicator.Size = UDim2.new(0, 5, 1, 0)
+    indicator.BackgroundColor3 = mainColor
+    indicator.BorderSizePixel = 0
+    indicator.Parent = bar
+    
+    local indCorner = Instance.new("UICorner")
+    indCorner.CornerRadius = UDim.new(0, 4)
+    indCorner.Parent = indicator
+    
+    -- Текст
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -15, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = textStr
+    label.TextColor3 = mainColor
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = bar
+    
+    -- Логика ограничения (максимум 3)
+    table.insert(ActiveNotifications, bar)
+    if #ActiveNotifications > 3 then
+        local oldest = table.remove(ActiveNotifications, 1)
+        oldest:Destroy()
+    end
+    
+    -- Плавное исчезновение через 3 секунды
+    task.spawn(function()
+        task.wait(3)
+        if bar and bar.Parent then
+            TweenService:Create(bar, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+            TweenService:Create(label, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+            TweenService:Create(indicator, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+            task.wait(0.5)
+            for i, v in pairs(ActiveNotifications) do
+                if v == bar then
+                    table.remove(ActiveNotifications, i)
+                    break
+                end
+            end
+            bar:Destroy()
+        end
+    end)
+end
 
 -- ================= ГЛАВНОЕ МЕНЮ =================
 local Main = Instance.new("Frame")
@@ -364,7 +418,7 @@ end
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
--- СИСТЕМА УРОНА (DAMAGE NUMBERS & STATS)
+-- СИСТЕМА УРОНА (DAMAGE NUMBERS)
 -- ============================================================================
 local function SpawnDamageNumber(position, damage, isTaken)
     if not Config.DamageNumbers or State.Unloaded then return end
@@ -391,9 +445,11 @@ local function TrackPlayer(p)
                     local oldHealth = hum:GetAttribute("LastHealth") or newHealth
                     if newHealth < oldHealth then
                         local dmg = oldHealth - newHealth
-                        State.Stats.Taken = State.Stats.Taken + dmg
                         local head = char:FindFirstChild("Head")
-                        if head then SpawnDamageNumber(head.Position + Vector3.new(0, 2, 0), dmg, true) end
+                        if head then 
+                            SpawnDamageNumber(head.Position + Vector3.new(0, 2, 0), dmg, true) 
+                            AddNotification(dmg, true) -- ДОБАВЛЯЕМ ПОЛОСКУ (Получен)
+                        end
                     end
                     hum:SetAttribute("LastHealth", newHealth)
                 end)
@@ -411,9 +467,11 @@ local function TrackPlayer(p)
                 local oldHealth = hum:GetAttribute("LastHealth") or newHealth
                 if newHealth < oldHealth then
                     local dmg = oldHealth - newHealth
-                    State.Stats.Dealt = State.Stats.Dealt + dmg
                     local head = char:FindFirstChild("Head")
-                    if head and dmg > 0 then SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false) end
+                    if head and dmg > 0 then 
+                        SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false)
+                        AddNotification(dmg, false) -- ДОБАВЛЯЕМ ПОЛОСКУ (Нанесен)
+                    end
                 end
                 hum:SetAttribute("LastHealth", newHealth)
             end)
@@ -636,9 +694,6 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     )
     FeaturesLabel.Text = featuresText
 
-    -- ================= НИЖНИЙ HUD УРОНА =================
-    BottomHUDText.Text = string.format("Dealt: %d  |  Taken: %d", math.floor(State.Stats.Dealt), math.floor(State.Stats.Taken))
-
     -- ================= ОСТАЛЬНАЯ ЛОГИКА =================
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Config.FOV
@@ -678,4 +733,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] Loaded. Rainbow HUD & FPS Counter active.")
+print("[pisunRust v2] V21 Loaded. Notification Bars active.")
