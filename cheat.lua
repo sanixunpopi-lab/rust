@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V43 - SAFE HOOK & UI FIX)
+    pisunRust v2 - OMNIX FRAMEWORK (V44 - UI SCROLL & ANIMATIONS)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -14,27 +14,27 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 -- ============================================================================
--- НАСТРОЙКИ
+-- НАСТРОЙКИ (ВСЕ ВЫКЛЮЧЕНО ПО УМОЛЧАНИЮ)
 -- ============================================================================
 local Config = {
-    AimbotEnabled = true,
+    AimbotEnabled = false,
     AimbotMethod = "Camera", 
     FOV = 150,
     Smoothness = 0.25,
-    VisibleAim = true,
-    Prediction = true,
-    WallshotEnabled = false, -- По умолчанию ВЫКЛ, чтобы не крашить игру
+    VisibleAim = false,
+    Prediction = false,
+    WallshotEnabled = false,
     
-    ESPEnabled = true,
+    ESPEnabled = false,
     ESPMaxDist = 1000,
-    ESPWeapon = true,
-    DamageNumbers = true,
-    ShowDamageLog = true,
+    ESPWeapon = false,
+    DamageNumbers = false,
+    ShowDamageLog = false,
     
-    PlayerChamsEnabled = true, 
+    PlayerChamsEnabled = false, 
     ESPBoxHue = 0,             
     
-    ItemESPEnabled = true,
+    ItemESPEnabled = false,
     ItemESPMaxDist = 300,      
     ItemESPFilter = "",        
     ItemESPColorHue = 120,     
@@ -51,7 +51,7 @@ local Config = {
     OptGraphics = false,     
     
     AutoSprint = false,
-    Fullbright = true,
+    Fullbright = false,
     MenuKey = Enum.KeyCode.RightShift,
     PanicKey = Enum.KeyCode.End
 }
@@ -85,7 +85,7 @@ local OriginalHeadSizes = {}
 local OriginalProps = {} 
 
 -- ============================================================================
--- SAFE WALLSHOT HOOK (НЕ КРАШИТ ИГРУ)
+-- SAFE WALLSHOT HOOK
 -- ============================================================================
 task.spawn(function()
     if type(hookfunction) == "function" then
@@ -104,9 +104,7 @@ task.spawn(function()
                     end
                     
                     local result = oldRaycast(self, origin, direction, newParams)
-                    if result and result.Instance then
-                        return result
-                    end
+                    if result and result.Instance then return result end
                 end
                 return oldRaycast(self, origin, direction, params)
             end)
@@ -118,22 +116,32 @@ end)
 -- FULLBRIGHT
 -- ============================================================================
 local function ApplyLighting()
-    if not Config.Fullbright or State.Unloaded then return end
-    Lighting.ClockTime = 12
-    Lighting.Brightness = 2.5
-    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-    Lighting.GlobalShadows = false
-    Lighting.FogEnd = 100000
-    Lighting.FogStart = 0
-    for _, v in pairs(Lighting:GetChildren()) do
-        if v:IsA("Atmosphere") then v.Density = 0; v.Haze = 0
-        elseif v:IsA("Sky") then v.StarCount = 0 end
+    if State.Unloaded then return end
+    if Config.Fullbright then
+        Lighting.ClockTime = 12
+        Lighting.Brightness = 2.5
+        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 0
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("Atmosphere") then v.Density = 0; v.Haze = 0
+            elseif v:IsA("Sky") then v.StarCount = 0 end
+        end
+    else
+        -- Возврат к стандарту (примерно)
+        Lighting.ClockTime = 14
+        Lighting.Brightness = 1
+        Lighting.Ambient = Color3.fromRGB(70, 70, 70)
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        Lighting.GlobalShadows = true
+        Lighting.FogEnd = 1000
     end
 end
 
 -- ============================================================================
--- ITEM ESP (БЕЗ ЛИМИТА HIGHLIGHT)
+-- ITEM ESP
 -- ============================================================================
 local function UpdateItemESP()
     if State.Unloaded then return end
@@ -206,7 +214,7 @@ local function UpdateItemESP()
 end
 
 -- ============================================================================
--- СИСТЕМА ОПТИМИЗАЦИИ
+-- ОПТИМИЗАТОР
 -- ============================================================================
 local function OptimizeObject(obj)
     if not Config.OptTextures and not Config.OptParticles and not Config.OptGraphics then return end
@@ -281,7 +289,7 @@ local function UpdateHeadSize()
 end
 
 -- ============================================================================
--- СИСТЕМА X-RAY (СТЕНЫ)
+-- X-RAY СТЕНЫ
 -- ============================================================================
 local function ApplyXRay()
     if State.Unloaded then return end
@@ -324,7 +332,7 @@ task.spawn(function()
 end)
 
 -- ============================================================================
--- ОРУЖИЕ (ДЛЯ ESP)
+-- ПОИСК ОРУЖИЯ
 -- ============================================================================
 local function GetWeaponName(character)
     local tool = character:FindFirstChildOfClass("Tool")
@@ -360,7 +368,7 @@ local function GetShortWeaponName(toolName)
 end
 
 -- ============================================================================
--- UI (СОЗДАЕТСЯ ПЕРВЫМ ДЕЛОМ)
+-- UI ФРЕЙМВОРК (АНИМАЦИИ И СКРОЛЛ)
 -- ============================================================================
 local ScreenGui = Instance.new("ScreenGui"); ScreenGui.Name = "pisunRustUI_v2"; ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui"); ScreenGui.ResetOnSpawn = false
 
@@ -370,10 +378,10 @@ local TopHUDCorner = Instance.new("UICorner"); TopHUDCorner.CornerRadius = UDim.
 local TopHUDStroke = Instance.new("UIStroke"); TopHUDStroke.Color = Color3.fromRGB(50, 50, 65); TopHUDStroke.Thickness = 1; TopHUDStroke.Parent = TopHUD
 local TitleLabel = Instance.new("TextLabel"); TitleLabel.Size = UDim2.new(1, -10, 0, 25); TitleLabel.Position = UDim2.new(0, 5, 0, 5); TitleLabel.BackgroundTransparency = 1; TitleLabel.Text = "pisunRust v2"; TitleLabel.Font = Enum.Font.GothamBlack; TitleLabel.TextSize = 18; TitleLabel.TextXAlignment = Enum.TextXAlignment.Left; TitleLabel.Parent = TopHUD
 local FPSLabel = Instance.new("TextLabel"); FPSLabel.Size = UDim2.new(1, -10, 0, 20); FPSLabel.Position = UDim2.new(0, 5, 0, 25); FPSLabel.BackgroundTransparency = 1; FPSLabel.Text = "FPS: 60"; FPSLabel.Font = Enum.Font.GothamBold; FPSLabel.TextSize = 14; FPSLabel.TextXAlignment = Enum.TextXAlignment.Left; FPSLabel.Parent = TopHUD
-local FeaturesLabel = Instance.new("TextLabel"); FeaturesLabel.Size = UDim2.new(1, -10, 0, 35); FeaturesLabel.Position = UDim2.new(0, 5, 0, 45); FeaturesLabel.BackgroundTransparency = 1; FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nItem ESP: ON | Light: ON"; FeaturesLabel.Font = Enum.Font.GothamSemibold; FeaturesLabel.TextSize = 12; FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left; FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top; FeaturesLabel.Parent = TopHUD
+local FeaturesLabel = Instance.new("TextLabel"); FeaturesLabel.Size = UDim2.new(1, -10, 0, 35); FeaturesLabel.Position = UDim2.new(0, 5, 0, 45); FeaturesLabel.BackgroundTransparency = 1; FeaturesLabel.Text = "All Features OFF"; FeaturesLabel.Font = Enum.Font.GothamSemibold; FeaturesLabel.TextSize = 12; FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left; FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top; FeaturesLabel.Parent = TopHUD
 
 -- Damage Log
-local DamageLogPanel = Instance.new("Frame"); DamageLogPanel.Size = UDim2.new(0, 180, 0, 160); DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80); DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20); DamageLogPanel.BackgroundTransparency = 0.3; DamageLogPanel.BorderSizePixel = 0; DamageLogPanel.Visible = Config.ShowDamageLog; DamageLogPanel.Parent = ScreenGui
+local DamageLogPanel = Instance.new("Frame"); DamageLogPanel.Size = UDim2.new(0, 180, 0, 160); DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80); DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20); DamageLogPanel.BackgroundTransparency = 0.3; DamageLogPanel.BorderSizePixel = 0; DamageLogPanel.Visible = false; DamageLogPanel.Parent = ScreenGui
 local DLCorner = Instance.new("UICorner"); DLCorner.CornerRadius = UDim.new(0, 6); DLCorner.Parent = DamageLogPanel
 local DLStroke = Instance.new("UIStroke"); DLStroke.Color = Color3.fromRGB(50, 50, 65); DLStroke.Thickness = 1; DLStroke.Parent = DamageLogPanel
 local DLTitle = Instance.new("TextLabel"); DLTitle.Size = UDim2.new(1, -10, 0, 25); DLTitle.Position = UDim2.new(0, 5, 0, 0); DLTitle.BackgroundTransparency = 1; DLTitle.Text = "Your Damage"; DLTitle.TextColor3 = Color3.fromRGB(200, 200, 220); DLTitle.Font = Enum.Font.GothamBold; DLTitle.TextSize = 14; DLTitle.TextXAlignment = Enum.TextXAlignment.Left; DLTitle.Parent = DamageLogPanel
@@ -409,47 +417,121 @@ local Header = Instance.new("Frame"); Header.Size = UDim2.new(1, 0, 0, 45); Head
 local HeaderCorner = Instance.new("UICorner"); HeaderCorner.CornerRadius = UDim.new(0, 8); HeaderCorner.Parent = Header
 local Title = Instance.new("TextLabel"); Title.Size = UDim2.new(1, -20, 1, 0); Title.Position = UDim2.new(0, 15, 0, 0); Title.BackgroundTransparency = 1; Title.Text = "pisunRust v2 | Menu"; Title.TextColor3 = Color3.fromRGB(230, 230, 250); Title.Font = Enum.Font.GothamBold; Title.TextSize = 16; Title.TextXAlignment = Enum.TextXAlignment.Left; Title.Parent = Header
 
-local TabContainer = Instance.new("Frame"); TabContainer.Size = UDim2.new(0, 130, 1, -45); TabContainer.Position = UDim2.new(0, 0, 0, 45); TabContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 30); TabContainer.Parent = Main
-local ContentContainer = Instance.new("Frame"); ContentContainer.Size = UDim2.new(1, -150, 1, -65); ContentContainer.Position = UDim2.new(0, 140, 0, 55); ContentContainer.BackgroundTransparency = 1; ContentContainer.Parent = Main
+-- Левая панель вкладок (Теперь со скроллом)
+local TabContainer = Instance.new("ScrollingFrame")
+TabContainer.Size = UDim2.new(0, 130, 1, -45)
+TabContainer.Position = UDim2.new(0, 0, 0, 45)
+TabContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+TabContainer.BorderSizePixel = 0
+TabContainer.ScrollBarThickness = 3
+TabContainer.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 255)
+TabContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+TabContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
+TabContainer.Parent = Main
 
-local Tabs, Pages, tabY = {}, {}, 8 
+local TabLayout = Instance.new("UIListLayout")
+TabLayout.Padding = UDim.new(0, 5)
+TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TabLayout.Parent = TabContainer
+
+local TabPadding = Instance.new("UIPadding")
+TabPadding.PaddingTop = UDim.new(0, 5)
+TabPadding.PaddingLeft = UDim.new(0, 5)
+TabPadding.PaddingRight = UDim.new(0, 5)
+TabPadding.Parent = TabContainer
+
+-- Правая панель контента (Скролл)
+local ContentContainer = Instance.new("Frame")
+ContentContainer.Size = UDim2.new(1, -150, 1, -65)
+ContentContainer.Position = UDim2.new(0, 140, 0, 55)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.Parent = Main
+
+local Tabs, Pages = {}, {}
 
 local function CreateTab(name)
-    local btn = Instance.new("TextButton"); btn.Size = UDim2.new(1, -16, 0, 35); btn.Position = UDim2.new(0, 8, 0, tabY); btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45); btn.Text = "  " .. name; btn.TextColor3 = Color3.fromRGB(180, 180, 200); btn.Font = Enum.Font.GothamSemibold; btn.TextSize = 14; btn.TextXAlignment = Enum.TextXAlignment.Left; btn.Parent = TabContainer
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 35)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+    btn.Text = "  " .. name
+    btn.TextColor3 = Color3.fromRGB(180, 180, 200)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 14
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = TabContainer
+    
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 6); corner.Parent = btn
-    local page = Instance.new("Frame"); page.Size = UDim2.new(1, 0, 1, 0); page.BackgroundTransparency = 1; page.Visible = false; page.Parent = ContentContainer
-    Tabs[name] = btn; Pages[name] = page; tabY = tabY + 40 
+    
+    -- Страница со скроллом
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 4
+    page.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 255)
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.Visible = false
+    page.Parent = ContentContainer
+    
+    local pageLayout = Instance.new("UIListLayout")
+    pageLayout.Padding = UDim.new(0, 5)
+    pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    pageLayout.Parent = page
+    
+    local pagePadding = Instance.new("UIPadding")
+    pagePadding.PaddingTop = UDim.new(0, 5)
+    pagePadding.PaddingRight = UDim.new(0, 10)
+    pagePadding.PaddingBottom = UDim.new(0, 5)
+    pagePadding.Parent = page
+    
+    Tabs[name] = btn
+    Pages[name] = page
+    
+    -- Анимация вкладок
     btn.MouseButton1Click:Connect(function()
-        for tName, tBtn in pairs(Tabs) do tBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 45); tBtn.TextColor3 = Color3.fromRGB(180, 180, 200); Pages[tName].Visible = false end
-        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 75); btn.TextColor3 = Color3.fromRGB(255, 255, 255); page.Visible = true
+        for tName, tBtn in pairs(Tabs) do 
+            TweenService:Create(tBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 45), TextColor3 = Color3.fromRGB(180, 180, 200)}):Play()
+            Pages[tName].Visible = false
+        end
+        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 75), TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+        
+        page.Visible = true
+        page.Position = UDim2.new(0, 20, 0, 0)
+        page.BackgroundTransparency = 1
+        TweenService:Create(page, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
     end)
+    
     return page
 end
 
+-- Создание вкладок
 local PageAimbot = CreateTab("Aimbot")
 local PageVisuals = CreateTab("Visuals")
 local PageOptimizer = CreateTab("Optimizer")
 local PageBinds = CreateTab("Binds")
 local PageMisc = CreateTab("Misc")
 
-local function CreateToggle(parent, text, default, posY, callback)
-    local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 30); frame.Position = UDim2.new(0, 0, 0, posY); frame.BackgroundTransparency = 1; frame.Parent = parent
+-- Базовые элементы UI
+local function CreateToggle(parent, text, default, callback)
+    local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 30); frame.BackgroundTransparency = 1; frame.Parent = parent
     local label = Instance.new("TextLabel"); label.Size = UDim2.new(0.8, 0, 1, 0); label.BackgroundTransparency = 1; label.Text = text; label.TextColor3 = Color3.fromRGB(210, 210, 220); label.Font = Enum.Font.Gotham; label.TextSize = 14; label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = frame
     local btn = Instance.new("TextButton"); btn.Size = UDim2.new(0, 36, 0, 18); btn.Position = UDim2.new(1, -36, 0.5, -9); btn.BackgroundColor3 = default and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(60, 60, 70); btn.Text = ""; btn.Parent = frame
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(1, 0); corner.Parent = btn
     local circle = Instance.new("Frame"); circle.Size = UDim2.new(0, 14, 0, 14); circle.Position = default and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7); circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255); circle.Parent = btn
     local circleCorner = Instance.new("UICorner"); circleCorner.CornerRadius = UDim.new(1, 0); circleCorner.Parent = circle
+    
     local state = default
     btn.MouseButton1Click:Connect(function()
         state = not state
-        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = state and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(60, 60, 70)}):Play()
-        TweenService:Create(circle, TweenInfo.new(0.2), {Position = state and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}):Play()
+        TweenService:Create(btn, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundColor3 = state and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(60, 60, 70)}):Play()
+        TweenService:Create(circle, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = state and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}):Play()
         callback(state)
     end)
 end
 
-local function CreateSlider(parent, text, min, max, default, posY, callback)
-    local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 45); frame.Position = UDim2.new(0, 0, 0, posY); frame.BackgroundTransparency = 1; frame.Parent = parent
+local function CreateSlider(parent, text, min, max, default, callback)
+    local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 45); frame.BackgroundTransparency = 1; frame.Parent = parent
     local label = Instance.new("TextLabel"); label.Size = UDim2.new(1, 0, 0, 20); label.BackgroundTransparency = 1; label.Text = text .. ": " .. default; label.TextColor3 = Color3.fromRGB(210, 210, 220); label.Font = Enum.Font.Gotham; label.TextSize = 14; label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = frame
     local bar = Instance.new("Frame"); bar.Size = UDim2.new(1, 0, 0, 6); bar.Position = UDim2.new(0, 0, 0, 28); bar.BackgroundColor3 = Color3.fromRGB(40, 40, 55); bar.Parent = frame
     local barCorner = Instance.new("UICorner"); barCorner.CornerRadius = UDim.new(1, 0); barCorner.Parent = bar
@@ -460,22 +542,28 @@ local function CreateSlider(parent, text, min, max, default, posY, callback)
         local mouseX = math.clamp(input.Position.X, bar.AbsolutePosition.X, bar.AbsolutePosition.X + bar.AbsoluteSize.X)
         local percent = (mouseX - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
         local val = math.floor(min + (max - min) * percent)
-        fill.Size = UDim2.new(percent, 0, 1, 0); label.Text = text .. ": " .. val; callback(val)
+        TweenService:Create(fill, TweenInfo.new(0.1), {Size = UDim2.new(percent, 0, 1, 0)}):Play()
+        label.Text = text .. ": " .. val; callback(val)
     end
     bar.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; update(input) end end)
     UserInputService.InputChanged:Connect(function(input) if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then update(input) end end)
     UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
 end
 
-local function CreateButton(parent, text, posY, callback, color)
-    local btn = Instance.new("TextButton"); btn.Size = UDim2.new(1, 0, 0, 32); btn.Position = UDim2.new(0, 0, 0, posY); btn.BackgroundColor3 = color or Color3.fromRGB(35, 35, 50); btn.Text = text; btn.TextColor3 = Color3.fromRGB(200, 200, 220); btn.Font = Enum.Font.GothamSemibold; btn.TextSize = 14; btn.Parent = parent
+local function CreateButton(parent, text, callback, color)
+    local btn = Instance.new("TextButton"); btn.Size = UDim2.new(1, 0, 0, 32); btn.BackgroundColor3 = color or Color3.fromRGB(35, 35, 50); btn.Text = text; btn.TextColor3 = Color3.fromRGB(200, 200, 220); btn.Font = Enum.Font.GothamSemibold; btn.TextSize = 14; btn.Parent = parent
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 6); corner.Parent = btn
-    btn.MouseButton1Click:Connect(callback)
+    btn.MouseButton1Click:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(70, 70, 90)}):Play()
+        task.wait(0.1)
+        TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = color or Color3.fromRGB(35, 35, 50)}):Play()
+        callback()
+    end)
     return btn
 end
 
-local function CreateTextBox(parent, placeholder, defaultText, posY, callback)
-    local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 30); frame.Position = UDim2.new(0, 0, 0, posY); frame.BackgroundTransparency = 1; frame.Parent = parent
+local function CreateTextBox(parent, placeholder, defaultText, callback)
+    local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 30); frame.BackgroundTransparency = 1; frame.Parent = parent
     local box = Instance.new("TextBox")
     box.Size = UDim2.new(1, 0, 1, 0)
     box.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
@@ -487,60 +575,63 @@ local function CreateTextBox(parent, placeholder, defaultText, posY, callback)
     box.TextSize = 14
     box.Parent = frame
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 6); corner.Parent = box
-    
-    box.FocusLost:Connect(function()
-        callback(box.Text)
-    end)
-    return box
+    box.FocusLost:Connect(function() callback(box.Text) end)
 end
 
--- Aimbot Tab
-CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, 0, function(v) Config.AimbotEnabled = v end)
-CreateToggle(PageAimbot, "Visible Aim", Config.VisibleAim, 35, function(v) Config.VisibleAim = v end)
-CreateToggle(PageAimbot, "Wallshot (Стрельба сквозь стены)", Config.WallshotEnabled, 70, function(v) Config.WallshotEnabled = v end) -- НОВАЯ КНОПКА
-CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 105, function(v) Config.FOV = v end)
-CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 155, function(v) Config.Smoothness = v / 100 end)
-local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 205, function() Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"; methodBtn.Text = "Method: " .. Config.AimbotMethod end)
+-- Заполнение вкладок
+-- Aimbot
+CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, function(v) Config.AimbotEnabled = v end)
+CreateToggle(PageAimbot, "Visible Aim", Config.VisibleAim, function(v) Config.VisibleAim = v end)
+CreateToggle(PageAimbot, "Wallshot (Стрельба сквозь стены)", Config.WallshotEnabled, function(v) Config.WallshotEnabled = v end)
+CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, function(v) Config.FOV = v end)
+CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, function(v) Config.Smoothness = v / 100 end)
+local methodBtn
+methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, function() Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"; methodBtn.Text = "Method: " .. Config.AimbotMethod end)
 
--- Visuals Tab
-CreateToggle(PageVisuals, "Player ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
-CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
-CreateToggle(PageVisuals, "Player Chams (Green/Red)", Config.PlayerChamsEnabled, 70, function(v) Config.PlayerChamsEnabled = v end)
-CreateSlider(PageVisuals, "ESP Color (Hue)", 0, 360, Config.ESPBoxHue, 105, function(v) Config.ESPBoxHue = v end)
+-- Visuals
+CreateToggle(PageVisuals, "Player ESP Boxes", Config.ESPEnabled, function(v) Config.ESPEnabled = v end)
+CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, function(v) Config.ESPWeapon = v end)
+CreateToggle(PageVisuals, "Player Chams (Green/Red)", Config.PlayerChamsEnabled, function(v) Config.PlayerChamsEnabled = v end)
+CreateSlider(PageVisuals, "ESP Color (Hue)", 0, 360, Config.ESPBoxHue, function(v) Config.ESPBoxHue = v end)
 
--- ITEM ESP
-CreateToggle(PageVisuals, "Item ESP (Рентген лута)", Config.ItemESPEnabled, 155, function(v) Config.ItemESPEnabled = v end)
-CreateTextBox(PageVisuals, "Фильтр (напр. ak, crate, пусто=все)", Config.ItemESPFilter, 190, function(text) Config.ItemESPFilter = text end)
-CreateSlider(PageVisuals, "Item ESP Distance", 50, 1000, Config.ItemESPMaxDist, 230, function(v) Config.ItemESPMaxDist = v end)
-CreateSlider(PageVisuals, "Item ESP Color (Hue)", 0, 360, Config.ItemESPColorHue, 280, function(v) Config.ItemESPColorHue = v end)
+CreateToggle(PageVisuals, "Item ESP (Рентген лута)", Config.ItemESPEnabled, function(v) Config.ItemESPEnabled = v end)
+CreateTextBox(PageVisuals, "Фильтр (напр. ak, crate, пусто=все)", Config.ItemESPFilter, function(text) Config.ItemESPFilter = text end)
+CreateSlider(PageVisuals, "Item ESP Distance", 50, 1000, Config.ItemESPMaxDist, function(v) Config.ItemESPMaxDist = v end)
+CreateSlider(PageVisuals, "Item ESP Color (Hue)", 0, 360, Config.ItemESPColorHue, function(v) Config.ItemESPColorHue = v end)
 
--- Стены и хитбоксы
-CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, 330, function(v) Config.XRayEnabled = v; ApplyXRay() end)
-CreateSlider(PageVisuals, "Wall Transparency", 0, 100, Config.XRayValue, 365, function(v) Config.XRayValue = v; if Config.XRayEnabled then ApplyXRay() end end)
-CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, 415, function(v) Config.XRayDistance = v; if Config.XRayEnabled then ApplyXRay() end end)
-CreateToggle(PageVisuals, "Head Expander", Config.HeadSizeEnabled, 460, function(v) Config.HeadSizeEnabled = v; if not v then for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end end end)
-CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 495, function(v) Config.HeadSizeValue = v end)
+CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, function(v) Config.XRayEnabled = v; ApplyXRay() end)
+CreateSlider(PageVisuals, "Wall Transparency", 0, 100, Config.XRayValue, function(v) Config.XRayValue = v; if Config.XRayEnabled then ApplyXRay() end end)
+CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, function(v) Config.XRayDistance = v; if Config.XRayEnabled then ApplyXRay() end end)
+CreateToggle(PageVisuals, "Head Expander", Config.HeadSizeEnabled, function(v) Config.HeadSizeEnabled = v; if not v then for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end end end)
+CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, function(v) Config.HeadSizeValue = v end)
 
--- Optimizer Tab
-CreateToggle(PageOptimizer, "Shakal Textures", Config.OptTextures, 0, function(v) Config.OptTextures = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Transparency ~= nil then pcall(function() obj.Transparency = props.Transparency end) end end end end)
-CreateToggle(PageOptimizer, "Remove Particles", Config.OptParticles, 35, function(v) Config.OptParticles = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Enabled ~= nil then pcall(function() obj.Enabled = props.Enabled end) end end end end)
-CreateToggle(PageOptimizer, "Flat Graphics", Config.OptGraphics, 70, function(v) Config.OptGraphics = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Material ~= nil then pcall(function() obj.Material = props.Material; obj.CastShadow = props.CastShadow end) end end end end)
+-- Optimizer
+CreateToggle(PageOptimizer, "Shakal Textures", Config.OptTextures, function(v) Config.OptTextures = v; if v then ApplyOptimization() else RestoreOptimization() end end)
+CreateToggle(PageOptimizer, "Remove Particles", Config.OptParticles, function(v) Config.OptParticles = v; if v then ApplyOptimization() else RestoreOptimization() end end)
+CreateToggle(PageOptimizer, "Flat Graphics", Config.OptGraphics, function(v) Config.OptGraphics = v; if v then ApplyOptimization() else RestoreOptimization() end end)
 
--- Misc Tab
-CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
-CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
-CreateSlider(PageMisc, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, function(v) Config.ESPMaxDist = v end)
+-- Misc
+CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, function(v) Config.AutoSprint = v end)
+CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, function(v) Config.Fullbright = v; ApplyLighting() end)
+CreateSlider(PageMisc, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, function(v) Config.ESPMaxDist = v end)
 
--- Binds Tab
+-- Binds
 local bindBtns = {}
-local function CreateBindButton(parent, text, bindName, posY)
-    local btn = CreateButton(parent, text .. ": " .. tostring(Binds[bindName]):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", ""), posY, function() State.WaitingForKey = bindName; btn.Text = "Нажми клавишу..."; btn.TextColor3 = Color3.fromRGB(255, 100, 100) end)
+local function CreateBindButton(parent, text, bindName)
+    local btn = CreateButton(parent, text .. ": " .. tostring(Binds[bindName]):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", ""), function() 
+        State.WaitingForKey = bindName
+        btn.Text = "Нажми клавишу..."
+        btn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end)
     bindBtns[bindName] = btn
 end
-CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
-CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
+CreateBindButton(PageBinds, "Aimbot Key", "Aimbot")
+CreateBindButton(PageBinds, "ESP Toggle", "ESP")
 
-Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
+-- Активация первой вкладки (Aimbot)
+Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75)
+Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255)
+Pages["Aimbot"].Visible = true
 
 -- ============================================================================
 -- UNLOAD
@@ -577,7 +668,7 @@ local function FullCleanup()
     pcall(function() Lighting.ClockTime = 14; Lighting.Brightness = 1; Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128); Lighting.GlobalShadows = true; Lighting.FogEnd = 1000 end)
     print("[pisunRust v2] Unloaded. Everything restored.")
 end
-CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 115, FullCleanup, Color3.fromRGB(150, 30, 30))
+CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
 -- СИСТЕМА УРОНА
@@ -648,14 +739,10 @@ Players.PlayerRemoving:Connect(function(p)
 end)
 
 for _, p in pairs(Players:GetPlayers()) do
-    p.CharacterAdded:Connect(function()
-        CleanupESP(p); CleanupChams(p)
-    end)
+    p.CharacterAdded:Connect(function() CleanupESP(p); CleanupChams(p) end)
 end
 Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function()
-        CleanupESP(p); CleanupChams(p)
-    end)
+    p.CharacterAdded:Connect(function() CleanupESP(p); CleanupChams(p) end)
 end)
 
 local function UpdateESP()
@@ -744,7 +831,7 @@ end
 -- AIMBOT
 -- ============================================================================
 local function GetTarget()
-    if State.Unloaded or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then return nil end
+    if State.Unloaded or not Config.AimbotEnabled or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then return nil end
     local closest = nil; local shortestDist = Config.FOV; local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") then
@@ -768,11 +855,33 @@ end
 -- ============================================================================
 -- ВВОД И ЦИКЛЫ
 -- ============================================================================
+local menuTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if State.Unloaded then return end
     if input.KeyCode == Config.PanicKey then FullCleanup(); return end
-    if input.KeyCode == Config.MenuKey then State.MenuOpen = not State.MenuOpen; Main.Visible = State.MenuOpen; return end
-    if State.WaitingForKey then local keyName = ""; if input.UserInputType == Enum.UserInputType.Keyboard then Binds[State.WaitingForKey] = input.KeyCode; keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "") else Binds[State.WaitingForKey] = input.UserInputType; keyName = tostring(input.UserInputType):gsub("Enum.UserInputType.", "") end; bindBtns[State.WaitingForKey].Text = State.WaitingForKey .. ": " .. keyName; bindBtns[State.WaitingForKey].TextColor3 = Color3.fromRGB(200, 200, 220); State.WaitingForKey = nil; return end
+    if input.KeyCode == Config.MenuKey then 
+        State.MenuOpen = not State.MenuOpen
+        if State.MenuOpen then
+            Main.Visible = true
+            Main.Position = UDim2.new(0.5, -260, 0.7, -260) -- Выезжает снизу
+            TweenService:Create(Main, menuTweenInfo, {Position = UDim2.new(0.5, -260, 0.5, -260)}):Play()
+        else
+            local hideTween = TweenService:Create(Main, menuTweenInfo, {Position = UDim2.new(0.5, -260, 0.7, -260)})
+            hideTween:Play()
+            hideTween.Completed:Connect(function() if not State.MenuOpen then Main.Visible = false end end)
+        end
+        return 
+    end
+    if State.WaitingForKey then 
+        local keyName = ""
+        if input.UserInputType == Enum.UserInputType.Keyboard then Binds[State.WaitingForKey] = input.KeyCode; keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
+        else Binds[State.WaitingForKey] = input.UserInputType; keyName = tostring(input.UserInputType):gsub("Enum.UserInputType.", "") end
+        bindBtns[State.WaitingForKey].Text = State.WaitingForKey .. ": " .. keyName
+        bindBtns[State.WaitingForKey].TextColor3 = Color3.fromRGB(200, 200, 220)
+        State.WaitingForKey = nil
+        return
+    end
     if gameProcessed then return end
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = true
     elseif input.UserInputType == Binds.ESP or input.KeyCode == Binds.ESP then Config.ESPEnabled = not Config.ESPEnabled
@@ -814,4 +923,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V43 Loaded. Safe Hook UI Fix.")
+print("[pisunRust v2] V44 Loaded. Scrolling & Animations active. All features OFF by default.")
