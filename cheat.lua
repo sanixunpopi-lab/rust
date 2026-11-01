@@ -1,332 +1,753 @@
--- RUST CLONE CHEAT - V9 (Рабочий аим через камеру)
+--[[
+    RUST CLONE CHEAT - ULTIMATE EDITION
+    Меню: ПРАВЫЙ SHIFT (RightShift)
+    Исправлен аим через BindToRenderStep (обход блокировки камеры)
+]]
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local TweenService = game:GetService("TweenService")
 
--- ================= НАСТРОЙКИ =================
-local aimbotEnabled = true
-local espEnabled = true
-local chamsEnabled = true
-local autoSprintEnabled = false
-local predictionEnabled = false -- ВЫКЛЮЧЕНО: чтобы наводка была точной
-local visibleAimEnabled = false 
-local circleRadius = 120       
-local smoothness = 0.30         
-local activationKey = Enum.UserInputType.MouseButton2
-local menuKey = Enum.KeyCode.RightShift
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
 
-local fovOffsetX = 0
-local fovOffsetY = -5 
+-- ============================================================================
+-- КОНФИГУРАЦИЯ И ПЕРЕМЕННЫЕ
+-- ============================================================================
+local Settings = {
+    -- Aimbot
+    AimbotEnabled = true,
+    SilentAimEnabled = false,
+    VisibleAim = true,
+    Prediction = true,
+    AimPart = "Head", -- "Head", "Torso", "Random"
+    FOV = 120,
+    Smoothness = 0.35,
+    AimbotKey = Enum.UserInputType.MouseButton2,
+    
+    -- Visuals
+    ESPEnabled = true,
+    ChamsEnabled = true,
+    ChamsStyle = "Visibility", -- "Visibility" (Red/Green) или "Static" (Одноцветный)
+    MaxDistance = 800,
+    
+    -- Misc
+    AutoSprint = false,
+    MenuKey = Enum.KeyCode.RightShift
+}
 
-local holdingKey = false
-local isMenuOpen = true
-local isSprinting = false
+local State = {
+    HoldingKey = false,
+    IsSprinting = false,
+    MenuOpen = true,
+    WaitingForKey = false,
+    CurrentTab = "Aimbot"
+}
+
 local CONFIG_FILE = "RustCheat_Config.json"
 
--- ================= БЕЗОПАСНОЕ UI =================
-local _guiParent = gethui and gethui() or game:GetService("CoreGui")
+-- ============================================================================
+-- БЕЗОПАСНЫЕ ОБЕРТКИ (Чтобы Xeno не крашился)
+-- ============================================================================
+local function safeWriteFile(path, content)
+    local success = pcall(function() writefile(path, content) end)
+    return success
+end
+
+local function safeReadFile(path)
+    local success, content = pcall(function() return readfile(path) end)
+    return success and content
+end
+
+local function safeIsFile(path)
+    local success, exists = pcall(function() return isfile(path) end)
+    return success and exists
+end
+
+-- ============================================================================
+-- СИСТЕМА КОНФИГОВ
+-- ============================================================================
+local ConfigManager = {}
+
+function ConfigManager.Save()
+    local data = HttpService:JSONEncode(Settings)
+    if safeWriteFile(CONFIG_FILE, data) then
+        return true
+    end
+    return false
+end
+
+function ConfigManager.Load()
+    if not safeIsFile(CONFIG_FILE) then return false end
+    local content = safeReadFile(CONFIG_FILE)
+    if not content then return false end
+    
+    local success, parsed = pcall(function() return HttpService:JSONDecode(content) end)
+    if success and parsed then
+        for k, v in pairs(parsed) do
+            if Settings[k] ~= nil then
+                if k == "AimbotKey" then
+                    -- Восстановление Enum значений
+                    if type(v) == "string" then
+                        if Enum.UserInputType[v] then Settings[k] = Enum.UserInputType[v]
+                        elseif Enum.KeyCode[v] then Settings[k] = Enum.KeyCode[v] end
+                    end
+                else
+                    Settings[k] = v
+                end
+            end
+        end
+        return true
+    end
+    return false
+end
+
+-- Автозагрузка конфига
+pcall(ConfigManager.Load)
+
+-- ============================================================================
+-- БИБЛИОТЕКА UI (КРАСИВОЕ МЕНЮ)
+-- ============================================================================
+local UI = {}
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "RustCheatUI"
-ScreenGui.Parent = _guiParent
+ScreenGui.Name = "RustUltimateUI"
+ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui")
 ScreenGui.ResetOnSpawn = false
 
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 420, 0, 680) 
-Frame.Position = UDim2.new(0.5, -210, 0.5, -340)
-Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-Frame.BorderSizePixel = 0
-Frame.Active = true
-Frame.Draggable = true
+-- Главное окно
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 550, 0, 400)
+MainFrame.Position = UDim2.new(0.5, -275, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
-local Title = Instance.new("TextLabel", Frame)
-Title.Text = "RUST CHEAT [RightShift]"
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 18
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 8)
+MainCorner.Parent = MainFrame
 
--- FOV Круг
-local fovCircle = Drawing.new("Circle")
-fovCircle.Thickness = 2
-fovCircle.NumSides = 100 
-fovCircle.Radius = circleRadius
-fovCircle.Color = Color3.fromRGB(0, 255, 255)
-fovCircle.Filled = false
-fovCircle.Visible = false
-fovCircle.Transparency = 0.8
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(50, 50, 60)
+MainStroke.Thickness = 1.5
+MainStroke.Parent = MainFrame
 
--- Переменные UI
-local espBtn, aimBtn, chamsBtn, sprintBtn, predBtn, visAimBtn, fovLabel, smoothLabel, offsetLabel, offsetXLabel, bindBtn
-local waitingForKey = false
+-- Заголовок
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+TitleBar.BackgroundTransparency = 0.5
+TitleBar.Parent = MainFrame
 
-local function createBtn(text, pos, size, callback)
-    local btn = Instance.new("TextButton", Frame)
-    btn.Size = size
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 8)
+TitleCorner.Parent = TitleBar
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, 0, 1, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "RUST ULTIMATE [RightShift]"
+TitleLabel.TextColor3 = Color3.fromRGB(220, 220, 230)
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 16
+TitleLabel.Parent = TitleBar
+
+-- Вкладки
+local TabContainer = Instance.new("Frame")
+TabContainer.Size = UDim2.new(0, 120, 1, -40)
+TabContainer.Position = UDim2.new(0, 0, 0, 40)
+TabContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+TabContainer.Parent = MainFrame
+
+local TabCorner = Instance.new("UICorner")
+TabCorner.CornerRadius = UDim.new(0, 8)
+TabCorner.Parent = TabContainer
+
+local ContentContainer = Instance.new("Frame")
+ContentContainer.Size = UDim2.new(1, -140, 1, -60)
+ContentContainer.Position = UDim2.new(0, 130, 0, 50)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.Parent = MainFrame
+
+local Pages = {}
+local TabButtons = {}
+
+local function CreateTab(name, icon)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 40)
+    btn.Position = UDim2.new(0, 5, 0, 5 + (#TabButtons * 45))
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    btn.Text = "  " .. name
+    btn.TextColor3 = Color3.fromRGB(180, 180, 190)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 14
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = TabContainer
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+    
+    local page = Instance.new("Frame")
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.Visible = false
+    page.Parent = ContentContainer
+    
+    Pages[name] = page
+    table.insert(TabButtons, btn)
+    
+    btn.MouseButton1Click:Connect(function()
+        for pName, pFrame in pairs(Pages) do
+            pFrame.Visible = false
+        end
+        for _, b in pairs(TabButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+            b.TextColor3 = Color3.fromRGB(180, 180, 190)
+        end
+        page.Visible = true
+        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        State.CurrentTab = name
+    end)
+    
+    return page
+end
+
+-- Создаем вкладки
+local AimbotPage = CreateTab("Aimbot")
+local VisualsPage = CreateTab("Visuals")
+local MiscPage = CreateTab("Misc")
+
+-- Элементы UI (Toggle)
+local function CreateToggle(parent, text, default, pos, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 0, 30)
+    frame.Position = pos
+    frame.BackgroundTransparency = 1
+    frame.Parent = parent
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.7, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(200, 200, 210)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+    
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0, 40, 0, 20)
+    toggleBtn.Position = UDim2.new(1, -40, 0.5, -10)
+    toggleBtn.BackgroundColor3 = default and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(60, 60, 70)
+    toggleBtn.Text = ""
+    toggleBtn.Parent = frame
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = toggleBtn
+    
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(0, 16, 0, 16)
+    circle.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    circle.Parent = toggleBtn
+    
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(1, 0)
+    circleCorner.Parent = circle
+    
+    local state = default
+    
+    toggleBtn.MouseButton1Click:Connect(function()
+        state = not state
+        TweenService:Create(toggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = state and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(60, 60, 70)}):Play()
+        TweenService:Create(circle, TweenInfo.new(0.2), {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
+        callback(state)
+    end)
+end
+
+-- Элементы UI (Slider)
+local function CreateSlider(parent, text, min, max, default, pos, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 0, 45)
+    frame.Position = pos
+    frame.BackgroundTransparency = 1
+    frame.Parent = parent
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.6, 0, 0, 20)
+    label.BackgroundTransparency = 1
+    label.Text = text .. ": " .. default
+    label.TextColor3 = Color3.fromRGB(200, 200, 210)
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+    
+    local barBg = Instance.new("Frame")
+    barBg.Size = UDim2.new(1, 0, 0, 6)
+    barBg.Position = UDim2.new(0, 0, 0, 28)
+    barBg.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    barBg.Parent = frame
+    
+    local barCorner = Instance.new("UICorner")
+    barCorner.CornerRadius = UDim.new(1, 0)
+    barCorner.Parent = barBg
+    
+    local barFill = Instance.new("Frame")
+    barFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    barFill.BackgroundColor3 = Color3.fromRGB(80, 120, 255)
+    barFill.Parent = barBg
+    
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(1, 0)
+    fillCorner.Parent = barFill
+    
+    local dragging = false
+    
+    local function update(input)
+        local mouseX = math.clamp(input.Position.X, barBg.AbsolutePosition.X, barBg.AbsolutePosition.X + barBg.AbsoluteSize.X)
+        local percent = (mouseX - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X
+        local value = math.floor(min + (max - min) * percent)
+        barFill.Size = UDim2.new(percent, 0, 1, 0)
+        label.Text = text .. ": " .. value
+        callback(value)
+    end
+    
+    barBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            update(input)
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            update(input)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+end
+
+-- Элементы UI (Button)
+local function CreateButton(parent, text, pos, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 30)
     btn.Position = pos
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
     btn.Text = text
-    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 15
-    btn.MouseButton1Click:Connect(callback)
+    btn.TextColor3 = Color3.fromRGB(200, 200, 220)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 14
+    btn.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        callback()
+    end)
+    
     return btn
 end
 
-function updateUI()
-    if not espBtn then return end
-    espBtn.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
-    espBtn.BackgroundColor3 = espEnabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(50, 50, 50)
-    aimBtn.Text = "Aimbot: " .. (aimbotEnabled and "ON" or "OFF")
-    aimBtn.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(50, 50, 50)
-    chamsBtn.Text = "Chams: " .. (chamsEnabled and "ON" or "OFF")
-    chamsBtn.BackgroundColor3 = chamsEnabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(50, 50, 50)
-    sprintBtn.Text = "Sprint: " .. (autoSprintEnabled and "ON" or "OFF")
-    sprintBtn.BackgroundColor3 = autoSprintEnabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(50, 50, 50)
-    predBtn.Text = "Prediction: " .. (predictionEnabled and "ON" or "OFF")
-    predBtn.BackgroundColor3 = predictionEnabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(50, 50, 50)
-    visAimBtn.Text = "Vis Aim: " .. (visibleAimEnabled and "ON" or "OFF")
-    visAimBtn.BackgroundColor3 = visibleAimEnabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(50, 50, 50)
-    fovLabel.Text = "FOV: " .. circleRadius
-    smoothLabel.Text = "Speed: " .. string.format("%.2f", smoothness)
-    offsetLabel.Text = "Offset Y: " .. fovOffsetY
-    offsetXLabel.Text = "Offset X: " .. fovOffsetX
-    if not waitingForKey and bindBtn then
-        local keyName = tostring(activationKey):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", "")
-        bindBtn.Text = "Aim Key: " .. keyName
+-- ============================================================================
+-- НАСТРОЙКА ВКЛАДОК (Добавление элементов)
+-- ============================================================================
+
+-- Вкладка Aimbot
+CreateToggle(AimbotPage, "Aimbot Enabled", Settings.AimbotEnabled, UDim2.new(0, 0, 0, 0), function(val) Settings.AimbotEnabled = val end)
+CreateToggle(AimbotPage, "Silent Aim", Settings.SilentAimEnabled, UDim2.new(0, 0, 0, 35), function(val) Settings.SilentAimEnabled = val end)
+CreateToggle(AimbotPage, "Visible Aim (Только видимых)", Settings.VisibleAim, UDim2.new(0, 0, 0, 70), function(val) Settings.VisibleAim = val end)
+CreateToggle(AimbotPage, "Prediction (Упреждение)", Settings.Prediction, UDim2.new(0, 0, 0, 105), function(val) Settings.Prediction = val end)
+CreateSlider(AimbotPage, "FOV Size", 30, 400, Settings.FOV, UDim2.new(0, 0, 0, 145), function(val) Settings.FOV = val end)
+CreateSlider(AimbotPage, "Smoothness", 1, 100, Settings.Smoothness * 100, UDim2.new(0, 0, 0, 195), function(val) Settings.Smoothness = val / 100 end)
+
+local keyBindBtn
+keyBindBtn = CreateButton(AimbotPage, "Aim Key: " .. tostring(Settings.AimbotKey):gsub("Enum.UserInputType.", ""), UDim2.new(0, 0, 0, 250), function()
+    State.WaitingForKey = true
+    keyBindBtn.Text = "Нажми клавишу..."
+    keyBindBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+end)
+
+-- Вкладка Visuals
+CreateToggle(VisualsPage, "ESP Player Box", Settings.ESPEnabled, UDim2.new(0, 0, 0, 0), function(val) Settings.ESPEnabled = val end)
+CreateToggle(VisualsPage, "Chams (Подсветка)", Settings.ChamsEnabled, UDim2.new(0, 0, 0, 35), function(val) Settings.ChamsEnabled = val end)
+CreateToggle(VisualsPage, "Chams Mode: Visibility (Красный/Зеленый)", Settings.ChamsStyle == "Visibility", UDim2.new(0, 0, 0, 70), function(val) Settings.ChamsStyle = val and "Visibility" or "Static" end)
+CreateSlider(VisualsPage, "Max ESP Distance", 100, 2000, Settings.MaxDistance, UDim2.new(0, 0, 0, 115), function(val) Settings.MaxDistance = val end)
+
+-- Вкладка Misc
+CreateToggle(MiscPage, "Auto Sprint", Settings.AutoSprint, UDim2.new(0, 0, 0, 0), function(val) Settings.AutoSprint = val end)
+CreateButton(MiscPage, "SAVE CONFIG", UDim2.new(0, 0, 0, 45), function()
+    if ConfigManager.Save() then
+        keyBindBtn.Text = "Config Saved!"
+        task.wait(1)
+        keyBindBtn.Text = "Aim Key: " .. tostring(Settings.AimbotKey):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", "")
     end
-end
-
--- Конфиги
-local function saveConfig()
-    if not bindBtn then return end
-    local config = {
-        aimbotEnabled = aimbotEnabled, espEnabled = espEnabled, chamsEnabled = chamsEnabled,
-        autoSprintEnabled = autoSprintEnabled, predictionEnabled = predictionEnabled,
-        visibleAimEnabled = visibleAimEnabled, circleRadius = circleRadius, smoothness = smoothness,
-        fovOffsetX = fovOffsetX, fovOffsetY = fovOffsetY,
-        keyString = tostring(activationKey):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", ""),
-        isKeyUserInputType = tostring(activationKey):find("UserInputType") ~= nil
-    }
-    pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(config)) end)
-    bindBtn.Text = "Saved!"; task.wait(1); updateUI()
-end
-
-local function loadConfig()
-    if not isfile(CONFIG_FILE) then return end
-    local success, data = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end)
-    if success and data then
-        aimbotEnabled = data.aimbotEnabled ~= nil and data.aimbotEnabled or aimbotEnabled
-        espEnabled = data.espEnabled ~= nil and data.espEnabled or espEnabled
-        chamsEnabled = data.chamsEnabled ~= nil and data.chamsEnabled or chamsEnabled
-        autoSprintEnabled = data.autoSprintEnabled ~= nil and data.autoSprintEnabled or autoSprintEnabled
-        predictionEnabled = data.predictionEnabled ~= nil and data.predictionEnabled or predictionEnabled
-        visibleAimEnabled = data.visibleAimEnabled ~= nil and data.visibleAimEnabled or visibleAimEnabled
-        circleRadius = data.circleRadius or circleRadius
-        smoothness = data.smoothness or smoothness
-        fovOffsetX = data.fovOffsetX or fovOffsetX
-        fovOffsetY = data.fovOffsetY or fovOffsetY
-        if data.keyString then
-            if data.isKeyUserInputType then activationKey = Enum.UserInputType[data.keyString]
-            else activationKey = Enum.KeyCode[data.keyString] end
-        end
-        updateUI() 
-        if bindBtn then bindBtn.Text = "Loaded!"; task.wait(1); updateUI() end
+end)
+CreateButton(MiscPage, "LOAD CONFIG", UDim2.new(0, 0, 0, 85), function()
+    if ConfigManager.Load() then
+        keyBindBtn.Text = "Config Loaded!"
+        task.wait(1)
+        keyBindBtn.Text = "Aim Key: " .. tostring(Settings.AimbotKey):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", "")
     end
-end
+end)
 
--- Создание кнопок
-espBtn = createBtn("ESP: OFF", UDim2.new(0.05, 0, 0.08, 0), UDim2.new(0.28, 0, 0, 35), function() espEnabled = not espEnabled; updateUI() end)
-aimBtn = createBtn("Aimbot: OFF", UDim2.new(0.36, 0, 0.08, 0), UDim2.new(0.28, 0, 0, 35), function() aimbotEnabled = not aimbotEnabled; updateUI() end)
-visAimBtn = createBtn("Vis Aim: OFF", UDim2.new(0.67, 0, 0.08, 0), UDim2.new(0.28, 0, 0, 35), function() visibleAimEnabled = not visibleAimEnabled; updateUI() end)
-chamsBtn = createBtn("Chams: OFF", UDim2.new(0.05, 0, 0.16, 0), UDim2.new(0.28, 0, 0, 35), function() chamsEnabled = not chamsEnabled; updateUI() end)
-sprintBtn = createBtn("Sprint: OFF", UDim2.new(0.36, 0, 0.16, 0), UDim2.new(0.28, 0, 0, 35), function() autoSprintEnabled = not autoSprintEnabled; updateUI() end)
-predBtn = createBtn("Prediction: OFF", UDim2.new(0.67, 0, 0.16, 0), UDim2.new(0.28, 0, 0, 35), function() predictionEnabled = not predictionEnabled; updateUI() end)
+-- По умолчанию открываем Aimbot
+TabButtons[1].MouseButton1Click:Fire()
 
-fovLabel = Instance.new("TextLabel", Frame); fovLabel.Size = UDim2.new(0.4, 0, 0, 35); fovLabel.Position = UDim2.new(0.05, 0, 0.25, 0); fovLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35); fovLabel.TextColor3 = Color3.fromRGB(255, 255, 255); fovLabel.Font = Enum.Font.SourceSansBold; fovLabel.TextSize = 15
-createBtn("-", UDim2.new(0.45, 0, 0.25, 0), UDim2.new(0.22, 0, 0, 35), function() circleRadius = math.max(30, circleRadius - 10); updateUI() end)
-createBtn("+", UDim2.new(0.72, 0, 0.25, 0), UDim2.new(0.22, 0, 0, 35), function() circleRadius = math.min(800, circleRadius + 10); updateUI() end)
+-- ============================================================================
+-- FOV КРУГ (DRAWING API)
+-- ============================================================================
+local FovCircle = Drawing.new("Circle")
+FovCircle.Thickness = 1.5
+FovCircle.NumSides = 100
+FovCircle.Radius = Settings.FOV
+FovCircle.Color = Color3.fromRGB(80, 120, 255)
+FovCircle.Filled = false
+FovCircle.Visible = false
+FovCircle.Transparency = 0.7
 
-smoothLabel = Instance.new("TextLabel", Frame); smoothLabel.Size = UDim2.new(0.4, 0, 0, 35); smoothLabel.Position = UDim2.new(0.05, 0, 0.34, 0); smoothLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35); smoothLabel.TextColor3 = Color3.fromRGB(255, 255, 255); smoothLabel.Font = Enum.Font.SourceSansBold; smoothLabel.TextSize = 15
-createBtn("-", UDim2.new(0.45, 0, 0.34, 0), UDim2.new(0.22, 0, 0, 35), function() smoothness = math.max(0.05, smoothness - 0.05); updateUI() end)
-createBtn("+", UDim2.new(0.72, 0, 0.34, 0), UDim2.new(0.22, 0, 0, 35), function() smoothness = math.min(1.0, smoothness + 0.05); updateUI() end)
-
-offsetLabel = Instance.new("TextLabel", Frame); offsetLabel.Size = UDim2.new(0.4, 0, 0, 35); offsetLabel.Position = UDim2.new(0.05, 0, 0.43, 0); offsetLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35); offsetLabel.TextColor3 = Color3.fromRGB(255, 200, 0); offsetLabel.Font = Enum.Font.SourceSansBold; offsetLabel.TextSize = 15
-createBtn("Y -", UDim2.new(0.45, 0, 0.43, 0), UDim2.new(0.22, 0, 0, 35), function() fovOffsetY = fovOffsetY - 5; updateUI() end)
-createBtn("Y +", UDim2.new(0.72, 0, 0.43, 0), UDim2.new(0.22, 0, 0, 35), function() fovOffsetY = fovOffsetY + 5; updateUI() end)
-
-offsetXLabel = Instance.new("TextLabel", Frame); offsetXLabel.Size = UDim2.new(0.4, 0, 0, 35); offsetXLabel.Position = UDim2.new(0.05, 0, 0.52, 0); offsetXLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35); offsetXLabel.TextColor3 = Color3.fromRGB(255, 200, 0); offsetXLabel.Font = Enum.Font.SourceSansBold; offsetXLabel.TextSize = 15
-createBtn("X -", UDim2.new(0.45, 0, 0.52, 0), UDim2.new(0.22, 0, 0, 35), function() fovOffsetX = fovOffsetX - 5; updateUI() end)
-createBtn("X +", UDim2.new(0.72, 0, 0.52, 0), UDim2.new(0.22, 0, 0, 35), function() fovOffsetX = fovOffsetX + 5; updateUI() end)
-
-bindBtn = Instance.new("TextButton", Frame); bindBtn.Size = UDim2.new(0.9, 0, 0, 35); bindBtn.Position = UDim2.new(0.05, 0, 0.62, 0); bindBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50); bindBtn.TextColor3 = Color3.fromRGB(255, 255, 255); bindBtn.Font = Enum.Font.SourceSansBold; bindBtn.TextSize = 15
-bindBtn.MouseButton1Click:Connect(function() waitingForKey = true; bindBtn.Text = "Press any key..."; bindBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) end)
-
-createBtn("SAVE CONFIG", UDim2.new(0.05, 0, 0.72, 0), UDim2.new(0.42, 0, 0, 35), saveConfig)
-createBtn("LOAD CONFIG", UDim2.new(0.53, 0, 0.72, 0), UDim2.new(0.42, 0, 0, 35), loadConfig)
-
-loadConfig()
-updateUI()
-
--- ================= ВВОД =================
+-- ============================================================================
+-- ОБРАБОТКА ВВОДА
+-- ============================================================================
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if input.KeyCode == menuKey then isMenuOpen = not isMenuOpen; Frame.Visible = isMenuOpen; return end
-    if waitingForKey then
-        if input.UserInputType == Enum.UserInputType.Keyboard then activationKey = input.KeyCode else activationKey = input.UserInputType end
-        bindBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50); waitingForKey = false; updateUI(); return
+    -- Открытие/Закрытие меню
+    if input.KeyCode == Settings.MenuKey then
+        State.MenuOpen = not State.MenuOpen
+        MainFrame.Visible = State.MenuOpen
     end
-    if gameProcessed then return end 
-    if input.UserInputType == activationKey or input.KeyCode == activationKey then holdingKey = true end
+
+    -- Установка бинда
+    if State.WaitingForKey then
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            Settings.AimbotKey = input.KeyCode
+        else
+            Settings.AimbotKey = input.UserInputType
+        end
+        State.WaitingForKey = false
+        keyBindBtn.Text = "Aim Key: " .. tostring(Settings.AimbotKey):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", "")
+        keyBindBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+        return
+    end
+
+    if gameProcessed then return end
+
+    -- Нажатие бинда аимбота
+    if input.UserInputType == Settings.AimbotKey or input.KeyCode == Settings.AimbotKey then
+        State.HoldingKey = true
+    end
 end)
 
 UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.UserInputType == activationKey or input.KeyCode == activationKey then holdingKey = false end
+    if input.UserInputType == Settings.AimbotKey or input.KeyCode == Settings.AimbotKey then
+        State.HoldingKey = false
+    end
 end)
 
--- ================= ESP & CHAMS =================
-local espObjects = {}
-local chamsObjects = {}
-local maxESPDistance = 800 
+-- ============================================================================
+-- МОДУЛЬ ESP (ОЧИСТКА И ОТРИСОВКА)
+-- ============================================================================
+local ESPCache = {}
+local ChamsCache = {}
 
-local function isVisible(targetChar)
-    local myChar = player.Character
-    local targetPart = targetChar:FindFirstChild("Head")
+local function IsPlayerVisible(targetChar)
+    local myChar = LocalPlayer.Character
+    local targetPart = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
     if not myChar or not myChar:FindFirstChild("Head") or not targetPart then return false end
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {myChar, targetChar}
-    local rayResult = workspace:Raycast(camera.CFrame.Position, targetPart.Position - camera.CFrame.Position, rayParams)
-    return rayResult == nil
+
+    local RayParams = RaycastParams.new()
+    RayParams.FilterType = Enum.RaycastFilterType.Exclude
+    RayParams.FilterDescendantsInstances = {myChar, targetChar}
+
+    local RayResult = workspace:Raycast(Camera.CFrame.Position, targetPart.Position - Camera.CFrame.Position, RayParams)
+    return RayResult == nil
 end
 
-local function createESP(p)
-    local esp = {}
-    esp.Box = Drawing.new("Square"); esp.Box.Thickness = 1; esp.Box.Color = Color3.fromRGB(255, 50, 50); esp.Box.Filled = false; esp.Box.Visible = false
-    esp.Name = Drawing.new("Text"); esp.Name.Size = 14; esp.Name.Center = true; esp.Name.Outline = true; esp.Name.Color = Color3.fromRGB(255, 255, 255); esp.Name.Visible = false
-    esp.Health = Drawing.new("Text"); esp.Health.Size = 12; esp.Health.Center = true; esp.Health.Outline = true; esp.Health.Color = Color3.fromRGB(0, 255, 0); esp.Health.Visible = false
-    esp.Dist = Drawing.new("Text"); esp.Dist.Size = 12; esp.Dist.Center = true; esp.Dist.Outline = true; esp.Dist.Color = Color3.fromRGB(255, 200, 0); esp.Dist.Visible = false
-    return esp
+local function CreateESP(targetPlayer)
+    local ESP = {
+        Box = Drawing.new("Square"),
+        Name = Drawing.new("Text"),
+        Health = Drawing.new("Text"),
+        Dist = Drawing.new("Text")
+    }
+    
+    ESP.Box.Thickness = 1
+    ESP.Box.Color = Color3.fromRGB(255, 50, 50)
+    ESP.Box.Filled = false
+    ESP.Box.Transparency = 1
+    
+    ESP.Name.Size = 14
+    ESP.Name.Center = true
+    ESP.Name.Outline = true
+    ESP.Name.Color = Color3.fromRGB(255, 255, 255)
+    
+    ESP.Health.Size = 12
+    ESP.Health.Center = true
+    ESP.Health.Outline = true
+    ESP.Health.Color = Color3.fromRGB(0, 255, 0)
+    
+    ESP.Dist.Size = 12
+    ESP.Dist.Center = true
+    ESP.Dist.Outline = true
+    ESP.Dist.Color = Color3.fromRGB(255, 200, 0)
+    
+    return ESP
 end
 
-local function updateESP()
+local function UpdateVisuals()
+    -- Очистка "мертвых" ESP
+    for p, esp in pairs(ESPCache) do
+        if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
+            esp.Box.Visible = false
+            esp.Name.Visible = false
+            esp.Health.Visible = false
+            esp.Dist.Visible = false
+            ESPCache[p] = nil
+            if ChamsCache[p] then
+                ChamsCache[p]:Destroy()
+                ChamsCache[p] = nil
+            end
+        end
+    end
+
+    -- Отрисовка живых
     for _, p in pairs(Players:GetPlayers()) do
-        if p == player or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
-            if espObjects[p] then espObjects[p].Box.Visible = false; espObjects[p].Name.Visible = false; espObjects[p].Health.Visible = false; espObjects[p].Dist.Visible = false end
-            if chamsObjects[p] then chamsObjects[p]:Destroy(); chamsObjects[p] = nil end
-            continue
-        end
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("Head") then
+            local hum = p.Character.Humanoid
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            local head = p.Character:FindFirstChild("Head")
+            
+            if hum.Health > 0 and hrp and head then
+                local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local dist = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
 
-        local hum = p.Character.Humanoid
-        local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-        local head = p.Character:FindFirstChild("Head")
-        if not hrp or not head then continue end
-        
-        local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-        local distVal = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
+                -- Если дистанция больше лимита, скипаем
+                if dist > Settings.MaxDistance then
+                    if ESPCache[p] then
+                        ESPCache[p].Box.Visible = false
+                        ESPCache[p].Name.Visible = false
+                        ESPCache[p].Health.Visible = false
+                        ESPCache[p].Dist.Visible = false
+                    end
+                    if ChamsCache[p] then
+                        ChamsCache[p]:Destroy()
+                        ChamsCache[p] = nil
+                    end
+                    continue
+                end
 
-        if distVal > maxESPDistance then
-            if espObjects[p] then espObjects[p].Box.Visible = false; espObjects[p].Name.Visible = false; espObjects[p].Health.Visible = false; espObjects[p].Dist.Visible = false end
-            if chamsObjects[p] then chamsObjects[p]:Destroy(); chamsObjects[p] = nil end
-            continue
-        end
+                -- CHAMS (Подсветка)
+                if Settings.ChamsEnabled then
+                    if not ChamsCache[p] or ChamsCache[p].Parent ~= p.Character then
+                        if ChamsCache[p] then ChamsCache[p]:Destroy() end
+                        local chams = Instance.new("Highlight")
+                        chams.FillTransparency = 0.6
+                        chams.OutlineTransparency = 0
+                        chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        chams.Parent = p.Character
+                        ChamsCache[p] = chams
+                    end
 
-        if chamsEnabled then
-            if not chamsObjects[p] or chamsObjects[p].Parent ~= p.Character then
-                if chamsObjects[p] then chamsObjects[p]:Destroy() end
-                local chams = Instance.new("Highlight")
-                chams.FillTransparency = 0.5; chams.OutlineTransparency = 0; chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; chams.Parent = p.Character
-                chams:SetAttribute("LastCheck", 0); chamsObjects[p] = chams
+                    local chams = ChamsCache[p]
+                    if Settings.ChamsStyle == "Visibility" then
+                        local visible = IsPlayerVisible(p.Character)
+                        chams.FillColor = visible and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                        chams.OutlineColor = visible and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(255, 0, 0)
+                    else
+                        chams.FillColor = Color3.fromRGB(255, 0, 0)
+                        chams.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    end
+                elseif ChamsCache[p] then
+                    ChamsCache[p]:Destroy()
+                    ChamsCache[p] = nil
+                end
+
+                -- ESP BOXES
+                if Settings.ESPEnabled then
+                    if not ESPCache[p] then
+                        ESPCache[p] = CreateESP(p)
+                    end
+                    local esp = ESPCache[p]
+                    
+                    local headPos = head.Position + Vector3.new(0, 0.5, 0)
+                    local rootPos = hrp.Position - Vector3.new(0, 2.5, 0)
+                    local screenHead, onScreen = Camera:WorldToViewportPoint(headPos)
+                    local screenRoot, _ = Camera:WorldToViewportPoint(rootPos)
+
+                    -- ВАЖНО: Проверка Z > 0 (чтобы не рисовало за спиной)
+                    if onScreen and screenHead.Z > 0 then
+                        local height = math.abs(screenHead.Y - screenRoot.Y)
+                        local width = height * 0.55
+
+                        esp.Box.Size = Vector2.new(width, height)
+                        esp.Box.Position = Vector2.new(screenHead.X - (width / 2), screenHead.Y)
+                        esp.Box.Visible = true
+
+                        esp.Name.Text = p.Name
+                        esp.Name.Position = Vector2.new(screenHead.X, screenHead.Y - 32)
+                        esp.Name.Visible = true
+
+                        esp.Health.Text = "HP: " .. math.floor(hum.Health)
+                        esp.Health.Position = Vector2.new(screenHead.X, screenHead.Y + height + 2)
+                        esp.Health.Visible = true
+
+                        esp.Dist.Text = "[" .. dist .. "m]"
+                        esp.Dist.Position = Vector2.new(screenHead.X, screenHead.Y - 18)
+                        esp.Dist.Visible = true
+                    else
+                        esp.Box.Visible = false
+                        esp.Name.Visible = false
+                        esp.Health.Visible = false
+                        esp.Dist.Visible = false
+                    end
+                elseif ESPCache[p] then
+                    ESPCache[p].Box.Visible = false
+                    ESPCache[p].Name.Visible = false
+                    ESPCache[p].Health.Visible = false
+                    ESPCache[p].Dist.Visible = false
+                end
             end
-            local chams = chamsObjects[p]
-            if tick() - chams:GetAttribute("LastCheck") > 0.1 then
-                chams:SetAttribute("LastCheck", tick())
-                if isVisible(p.Character) then chams.FillColor = Color3.fromRGB(0, 255, 0); chams.OutlineColor = Color3.fromRGB(0, 255, 0)
-                else chams.FillColor = Color3.fromRGB(255, 0, 0); chams.OutlineColor = Color3.fromRGB(255, 255, 255) end
-            end
-        elseif chamsObjects[p] then chamsObjects[p]:Destroy(); chamsObjects[p] = nil end
-
-        if espEnabled then
-            if not espObjects[p] then espObjects[p] = createESP(p) end
-            local esp = espObjects[p]
-            local headScreen, onScreen = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
-            local rootScreen = camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
-
-            if onScreen then
-                local height = math.abs(headScreen.Y - rootScreen.Y)
-                local width = height * 0.5 
-                esp.Box.Size = Vector2.new(width, height); esp.Box.Position = Vector2.new(headScreen.X - (width / 2), headScreen.Y); esp.Box.Visible = true
-                esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(headScreen.X, headScreen.Y - 32); esp.Name.Visible = true
-                esp.Health.Text = "HP: " .. math.floor(hum.Health); esp.Health.Position = Vector2.new(headScreen.X, headScreen.Y + height + 2); esp.Health.Visible = true
-                esp.Dist.Text = "[" .. distVal .. "m]"; esp.Dist.Position = Vector2.new(headScreen.X, headScreen.Y - 18); esp.Dist.Visible = true
-            else
-                esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false
-            end
-        elseif espObjects[p] then
-            espObjects[p].Box.Visible = false; espObjects[p].Name.Visible = false; espObjects[p].Health.Visible = false; espObjects[p].Dist.Visible = false
         end
     end
 end
 
--- ================= АИМ (ЖЕСТКАЯ КАМЕРА) =================
-local function getTarget()
-    local closestPart = nil
-    local shortestDist = circleRadius
-    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-    local fovCenter = Vector2.new(screenCenter.X + fovOffsetX, screenCenter.Y + fovOffsetY)
-    
+-- ============================================================================
+-- МОДУЛЬ AIMBOT (ИСПРАВЛЕННЫЙ)
+-- ============================================================================
+local function GetTarget()
+    local closestPlayer = nil
+    local shortestDist = Settings.FOV
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
     for _, p in pairs(Players:GetPlayers()) do
-        if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") then
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") then
             local hum = p.Character.Humanoid
             local hrp = p.Character:FindFirstChild("HumanoidRootPart")
             local head = p.Character:FindFirstChild("Head")
+            
             if hum.Health > 0 and hrp and head then
-                local targetPos = (head.Position + hrp.Position) / 2 
-                local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
-                if onScreen then
-                    local dist = (fovCenter - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+                local targetPos = Vector3.new(0, 0, 0)
+                
+                if Settings.AimPart == "Head" then
+                    targetPos = head.Position
+                elseif Settings.AimPart == "Torso" then
+                    targetPos = hrp.Position
+                else
+                    targetPos = (head.Position + hrp.Position) / 2
+                end
+
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
+                
+                -- Проверка, что цель на экране и перед нами (Z > 0)
+                if onScreen and screenPos.Z > 0 then
+                    local dist = (screenCenter - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+                    
                     if dist < shortestDist then
-                        if visibleAimEnabled and not isVisible(p.Character) then continue end
+                        if Settings.VisibleAim and not IsPlayerVisible(p.Character) then
+                            continue
+                        end
+
                         shortestDist = dist
-                        local finalTargetPos = targetPos
-                        if predictionEnabled then finalTargetPos = finalTargetPos + (hrp.AssemblyLinearVelocity * 0.15) end
-                        closestPart = {part = hrp, pos = finalTargetPos}
+                        
+                        -- Предугадывание
+                        if Settings.Prediction then
+                            local velocity = hrp.AssemblyLinearVelocity
+                            targetPos = targetPos + (velocity * 0.15)
+                        end
+
+                        closestPlayer = { player = p, part = hrp, pos = targetPos }
                     end
                 end
             end
         end
     end
-    return closestPart
+    return closestPlayer
 end
 
--- ================= ГЛАВНЫЙ ЦИКЛ =================
+-- ============================================================================
+-- ГЛАВНЫЙ ЦИКЛ (RunService)
+-- ============================================================================
+
+-- Отрисовка меню и ESP (RenderStepped)
 RunService.RenderStepped:Connect(function()
-    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-    
-    fovCircle.Position = Vector2.new(screenCenter.X + fovOffsetX, screenCenter.Y + fovOffsetY) 
-    fovCircle.Radius = circleRadius
-    fovCircle.Visible = aimbotEnabled
-
-    if espEnabled or chamsEnabled then updateESP() end
-
-    if autoSprintEnabled then
-        if not isSprinting then keypress(Enum.KeyCode.LeftShift); isSprinting = true end
+    -- FOV Круг
+    if Settings.AimbotEnabled and State.MenuOpen == false or Settings.AimbotEnabled then
+        local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        FovCircle.Position = screenCenter
+        FovCircle.Radius = Settings.FOV
+        FovCircle.Visible = Settings.AimbotEnabled
     else
-        if isSprinting then keyrelease(Enum.KeyCode.LeftShift); isSprinting = false end
+        FovCircle.Visible = false
     end
 
-    -- ЖЕСТКИЙ АИМ (Прямое изменение CFrame)
-    if aimbotEnabled and holdingKey then
-        local target = getTarget()
-        if target then
-            local cameraPos = camera.CFrame.Position
-            local targetPos = target.pos
-            
-            -- Плавно (или резко) поворачиваем камеру
-            local newCFrame = CFrame.new(cameraPos, targetPos)
-            camera.CFrame = camera.CFrame:Lerp(newCFrame, smoothness)
+    -- Обновление ESP
+    if Settings.ESPEnabled or Settings.ChamsEnabled then
+        UpdateVisuals()
+    end
+
+    -- Авто-спринт
+    if Settings.AutoSprint then
+        if not State.IsSprinting then
+            keypress(Enum.KeyCode.LeftShift)
+            State.IsSprinting = true
+        end
+    else
+        if State.IsSprinting then
+            keyrelease(Enum.KeyCode.LeftShift)
+            State.IsSprinting = false
         end
     end
 end)
+
+-- КРИТИЧЕСКИЙ ФИКС АИМА (BindToRenderStep)
+-- Мы ставим приоритет Camera.Value + 1, чтобы скрипт срабатывал ПОСЛЕ обновления камеры игрой
+local AimbotConnection = RunService:BindToRenderStep("RustAimbotCamera", Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
+    if not Settings.AimbotEnabled or not State.HoldingKey then return end
+    
+    local target = GetTarget()
+    if target then
+        local currentCFrame = Camera.CFrame
+        local targetCFrame = CFrame.new(currentCFrame.Position, target.pos)
+        
+        -- Плавность
+        local smooth = math.clamp(Settings.Smoothness, 0.01, 1)
+        Camera.CFrame = currentCFrame:Lerp(targetCFrame, smooth)
+        
+        -- Silent Aim логика
+        if Settings.SilentAimEnabled then
+            -- В Roblox Silent Aim делается через хук workspace.Raycast или метательные оружия
+            -- Так как это клон Rust, добавим попытку хука, если экзекьютор поддерживает
+            if type(hookfunction) == "function" and not _G.SilentAimHooked then
+                _G.SilentAimHooked = true
+                local oldRaycast = workspace.Raycast
+                workspace.Raycast = function(self, origin, direction, params)
+                    if State.HoldingKey and Settings.SilentAimEnabled then
+                        local currentTarget = GetTarget()
+                        if currentTarget then
+                            direction = (currentTarget.pos - origin).Unit * direction.Magnitude
+                        end
+                    end
+                    return oldRaycast(self, origin, direction, params)
+                end
+            end
+        end
+    end
+end)
+
+print("[RUST ULTIMATE] Скрипт успешно загружен!")
+print("[RUST ULTIMATE] Меню: ПРАВЫЙ SHIFT")
+print("[RUST ULTIMATE] Всего строк: 600+")
