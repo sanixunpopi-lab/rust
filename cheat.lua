@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V29 - OPTIMIZER)
+    pisunRust v2 - OMNIX FRAMEWORK (V30 - REACH HITBOX)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -24,6 +24,9 @@ local Config = {
     VisibleAim = true,
     Prediction = true,
     
+    ReachEnabled = false,    -- НОВОЕ: Удар с дистанции
+    ReachValue = 20,         -- НОВОЕ: Размер хитбокса (до 100)
+    
     ESPEnabled = true,
     ESPMaxDist = 1000,
     ESPWeapon = true,
@@ -38,10 +41,10 @@ local Config = {
     HeadSizeEnabled = false, 
     HeadSizeValue = 1,       
     
-    -- НОВОЕ: Оптимизатор
-    OptTextures = false,     -- Шакальные текстуры
-    OptParticles = false,    -- Убрать частицы/дым
-    OptGraphics = false,     -- Плоская графика (убрать тени)
+    -- Оптимизатор
+    OptTextures = false,     
+    OptParticles = false,    
+    OptGraphics = false,     
     
     AutoSprint = false,
     Fullbright = true,
@@ -75,7 +78,8 @@ local ActiveNotifications = {}
 local Connections = {}
 local OriginalTransparencies = {}
 local OriginalHeadSizes = {}
-local OriginalProps = {} -- Для оптимизатора
+local OriginalProps = {} 
+local OriginalRootSizes = {} -- Для Reach
 
 -- ============================================================================
 -- FULLBRIGHT
@@ -96,21 +100,60 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- СИСТЕМА ОПТИМИЗАЦИИ (ШАКАЛЬНЫЕ ТЕКСТУРЫ, ЧАСТИЦЫ, ТЕНИ)
+-- СИСТЕМА REACH (УДАР С ДИСТАНЦИИ)
+-- ============================================================================
+local function UpdateReach()
+    if State.Unloaded then return end
+    
+    -- Очистка старых записей
+    for hrp, _ in pairs(OriginalRootSizes) do
+        if not hrp or not hrp.Parent then OriginalRootSizes[hrp] = nil end
+    end
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if not OriginalRootSizes[hrp] then
+                    OriginalRootSizes[hrp] = {Size = hrp.Size, Trans = hrp.Transparency, Col = hrp.CanCollide, Touch = hrp.CanTouch}
+                end
+                
+                if Config.ReachEnabled then
+                    local newSize = Vector3.new(Config.ReachValue, Config.ReachValue, Config.ReachValue)
+                    pcall(function()
+                        hrp.Size = newSize
+                        hrp.Transparency = 1
+                        hrp.CanCollide = false
+                        hrp.CanTouch = false
+                        hrp.Massless = true
+                    end)
+                else
+                    if OriginalRootSizes[hrp] then
+                        pcall(function()
+                            hrp.Size = OriginalRootSizes[hrp].Size
+                            hrp.Transparency = OriginalRootSizes[hrp].Trans
+                            hrp.CanCollide = OriginalRootSizes[hrp].Col
+                            hrp.CanTouch = OriginalRootSizes[hrp].Touch
+                            hrp.Massless = false
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ============================================================================
+-- СИСТЕМА ОПТИМИЗАЦИИ
 -- ============================================================================
 local function OptimizeObject(obj)
     if not Config.OptTextures and not Config.OptParticles and not Config.OptGraphics then return end
     if not obj or not obj.Parent then return end
     
     if Config.OptTextures then
-        if obj:IsA("Decal") then
+        if obj:IsA("Decal") or obj:IsA("Texture") then
             if not OriginalProps[obj] then OriginalProps[obj] = {Transparency = obj.Transparency} end
-            pcall(function() obj.Transparency = 1 end) -- Скрываем Decals
-        elseif obj:IsA("Texture") then
-            if not OriginalProps[obj] then OriginalProps[obj] = {StudsPerTileU = obj.StudsPerTileU, StudsPerTileV = obj.StudsPerTileV, Transparency = obj.Transparency} end
-            pcall(function()
-                obj.Transparency = 1 -- Или можно obj.StudsPerTileU = 50, но скрытие дает больше ФПС
-            end)
+            pcall(function() obj.Transparency = 1 end)
         end
     end
     
@@ -124,19 +167,14 @@ local function OptimizeObject(obj)
     if Config.OptGraphics then
         if obj:IsA("BasePart") then
             if not OriginalProps[obj] then OriginalProps[obj] = {Material = obj.Material, CastShadow = obj.CastShadow} end
-            pcall(function()
-                obj.Material = Enum.Material.SmoothPlastic
-                obj.CastShadow = false
-            end)
+            pcall(function() obj.Material = Enum.Material.SmoothPlastic; obj.CastShadow = false end)
         end
     end
 end
 
 local function ApplyOptimization()
     if State.Unloaded then return end
-    for _, obj in pairs(workspace:GetDescendants()) do
-        OptimizeObject(obj)
-    end
+    for _, obj in pairs(workspace:GetDescendants()) do OptimizeObject(obj) end
 end
 
 local function RestoreOptimization()
@@ -144,7 +182,6 @@ local function RestoreOptimization()
         if obj and obj.Parent then
             pcall(function()
                 if props.Transparency ~= nil then obj.Transparency = props.Transparency end
-                if props.StudsPerTileU ~= nil then obj.StudsPerTileU = props.StudsPerTileU; obj.StudsPerTileV = props.StudsPerTileV end
                 if props.Enabled ~= nil then obj.Enabled = props.Enabled end
                 if props.Material ~= nil then obj.Material = props.Material; obj.CastShadow = props.CastShadow end
             end)
@@ -153,15 +190,12 @@ local function RestoreOptimization()
     OriginalProps = {}
 end
 
--- Слушаем новые объекты (чтобы дым от выстрелов сразу исчезал)
 workspace.DescendantAdded:Connect(function(obj)
-    if Config.OptTextures or Config.OptParticles or Config.OptGraphics then
-        OptimizeObject(obj)
-    end
+    if Config.OptTextures or Config.OptParticles or Config.OptGraphics then OptimizeObject(obj) end
 end)
 
 -- ============================================================================
--- СИСТЕМА РАСШИРЕНИЯ ГОЛОВЫ
+-- РАСШИРЕНИЕ ГОЛОВЫ
 -- ============================================================================
 local function UpdateHeadSize()
     if State.Unloaded then return end
@@ -266,12 +300,9 @@ end
 -- ============================================================================
 -- UI
 -- ============================================================================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "pisunRustUI_v2"
-ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui")
-ScreenGui.ResetOnSpawn = false
+local ScreenGui = Instance.new("ScreenGui"); ScreenGui.Name = "pisunRustUI_v2"; ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui"); ScreenGui.ResetOnSpawn = false
 
--- HUD, Меню Урона... (сокращено для читаемости)
+-- HUD
 local TopHUD = Instance.new("Frame"); TopHUD.Size = UDim2.new(0, 220, 0, 85); TopHUD.Position = UDim2.new(0, 20, 0, 20); TopHUD.BackgroundColor3 = Color3.fromRGB(10, 10, 15); TopHUD.BackgroundTransparency = 0.4; TopHUD.BorderSizePixel = 0; TopHUD.Parent = ScreenGui
 local TopHUDCorner = Instance.new("UICorner"); TopHUDCorner.CornerRadius = UDim.new(0, 6); TopHUDCorner.Parent = TopHUD
 local TopHUDStroke = Instance.new("UIStroke"); TopHUDStroke.Color = Color3.fromRGB(50, 50, 65); TopHUDStroke.Thickness = 1; TopHUDStroke.Parent = TopHUD
@@ -279,6 +310,7 @@ local TitleLabel = Instance.new("TextLabel"); TitleLabel.Size = UDim2.new(1, -10
 local FPSLabel = Instance.new("TextLabel"); FPSLabel.Size = UDim2.new(1, -10, 0, 20); FPSLabel.Position = UDim2.new(0, 5, 0, 25); FPSLabel.BackgroundTransparency = 1; FPSLabel.Text = "FPS: 60"; FPSLabel.Font = Enum.Font.GothamBold; FPSLabel.TextSize = 14; FPSLabel.TextXAlignment = Enum.TextXAlignment.Left; FPSLabel.Parent = TopHUD
 local FeaturesLabel = Instance.new("TextLabel"); FeaturesLabel.Size = UDim2.new(1, -10, 0, 35); FeaturesLabel.Position = UDim2.new(0, 5, 0, 45); FeaturesLabel.BackgroundTransparency = 1; FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nChams: ON | Light: ON"; FeaturesLabel.Font = Enum.Font.GothamSemibold; FeaturesLabel.TextSize = 12; FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left; FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top; FeaturesLabel.Parent = TopHUD
 
+-- Damage Log
 local DamageLogPanel = Instance.new("Frame"); DamageLogPanel.Size = UDim2.new(0, 180, 0, 160); DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80); DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20); DamageLogPanel.BackgroundTransparency = 0.3; DamageLogPanel.BorderSizePixel = 0; DamageLogPanel.Visible = Config.ShowDamageLog; DamageLogPanel.Parent = ScreenGui
 local DLCorner = Instance.new("UICorner"); DLCorner.CornerRadius = UDim.new(0, 6); DLCorner.Parent = DamageLogPanel
 local DLStroke = Instance.new("UIStroke"); DLStroke.Color = Color3.fromRGB(50, 50, 65); DLStroke.Thickness = 1; DLStroke.Parent = DamageLogPanel
@@ -307,7 +339,7 @@ local function AddNotification(amount)
     end)
 end
 
--- Главное меню (Высота 520)
+-- Main Menu (Высота 520)
 local Main = Instance.new("Frame"); Main.Size = UDim2.new(0, 520, 0, 520); Main.Position = UDim2.new(0.5, -260, 0.5, -260); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0, 8); MainCorner.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(45, 45, 60); MainStroke.Thickness = 2; MainStroke.Parent = Main
@@ -334,7 +366,7 @@ end
 
 local PageAimbot = CreateTab("Aimbot")
 local PageVisuals = CreateTab("Visuals")
-local PageOptimizer = CreateTab("Optimizer") -- НОВАЯ ВКЛАДКА
+local PageOptimizer = CreateTab("Optimizer")
 local PageBinds = CreateTab("Binds")
 local PageMisc = CreateTab("Misc")
 
@@ -387,6 +419,10 @@ CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 70, function(v) Config
 CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 120, function(v) Config.Smoothness = v / 100 end)
 local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 170, function() Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"; methodBtn.Text = "Method: " .. Config.AimbotMethod end)
 
+-- НОВЫЕ КНОПКИ REACH
+CreateToggle(PageAimbot, "Reach Expander (Hitbox)", Config.ReachEnabled, 210, function(v) Config.ReachEnabled = v; if not v then UpdateReach() end end)
+CreateSlider(PageAimbot, "Reach Size (5-100)", 5, 100, Config.ReachValue, 245, function(v) Config.ReachValue = v end)
+
 -- Visuals Tab
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
@@ -399,25 +435,10 @@ CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 270, fun
 CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 315, function(v) Config.DamageNumbers = v end)
 CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 350, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
 
--- Optimizer Tab (НОВОЕ)
-CreateToggle(PageOptimizer, "Shakal Textures (Текстуры)", Config.OptTextures, 0, function(v) 
-    Config.OptTextures = v
-    if v then ApplyOptimization() else 
-        for obj, props in pairs(OriginalProps) do if props.Transparency ~= nil then pcall(function() obj.Transparency = props.Transparency end) end end
-    end
-end)
-CreateToggle(PageOptimizer, "Remove Particles (Частицы)", Config.OptParticles, 35, function(v) 
-    Config.OptParticles = v
-    if v then ApplyOptimization() else
-        for obj, props in pairs(OriginalProps) do if props.Enabled ~= nil then pcall(function() obj.Enabled = props.Enabled end) end end
-    end
-end)
-CreateToggle(PageOptimizer, "Flat Graphics (Тени/Материалы)", Config.OptGraphics, 70, function(v) 
-    Config.OptGraphics = v
-    if v then ApplyOptimization() else
-        for obj, props in pairs(OriginalProps) do if props.Material ~= nil then pcall(function() obj.Material = props.Material; obj.CastShadow = props.CastShadow end) end end
-    end
-end)
+-- Optimizer Tab
+CreateToggle(PageOptimizer, "Shakal Textures (Текстуры)", Config.OptTextures, 0, function(v) Config.OptTextures = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Transparency ~= nil then pcall(function() obj.Transparency = props.Transparency end) end end end end)
+CreateToggle(PageOptimizer, "Remove Particles (Частицы)", Config.OptParticles, 35, function(v) Config.OptParticles = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Enabled ~= nil then pcall(function() obj.Enabled = props.Enabled end) end end end end)
+CreateToggle(PageOptimizer, "Flat Graphics (Тени/Материалы)", Config.OptGraphics, 70, function(v) Config.OptGraphics = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Material ~= nil then pcall(function() obj.Material = props.Material; obj.CastShadow = props.CastShadow end) end end end end)
 
 -- Misc Tab
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
@@ -427,9 +448,7 @@ CreateSlider(PageMisc, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, fun
 -- Binds Tab
 local bindBtns = {}
 local function CreateBindButton(parent, text, bindName, posY)
-    local btn = CreateButton(parent, text .. ": " .. tostring(Binds[bindName]):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", ""), posY, function()
-        State.WaitingForKey = bindName; btn.Text = "Нажми клавишу..."; btn.TextColor3 = Color3.fromRGB(255, 100, 100)
-    end)
+    local btn = CreateButton(parent, text .. ": " .. tostring(Binds[bindName]):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", ""), posY, function() State.WaitingForKey = bindName; btn.Text = "Нажми клавишу..."; btn.TextColor3 = Color3.fromRGB(255, 100, 100) end)
     bindBtns[bindName] = btn
 end
 CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
@@ -447,9 +466,7 @@ local function FullCleanup()
     Connections = {}
     if ScreenGui then pcall(function() ScreenGui:Destroy() end) end
     pcall(function() FOVCircle:Remove() end)
-    for p, esp in pairs(ESPObjects) do
-        pcall(function() esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove() end)
-    end
+    for p, esp in pairs(ESPObjects) do pcall(function() esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove() end) end
     ESPObjects = {}
     for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
     ChamsObjects = {}
@@ -460,8 +477,20 @@ local function FullCleanup()
     OriginalTransparencies = {}
     for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end
     OriginalHeadSizes = {}
+    for hrp, origProps in pairs(OriginalRootSizes) do 
+        if hrp and hrp.Parent then 
+            pcall(function() 
+                hrp.Size = origProps.Size
+                hrp.Transparency = origProps.Trans
+                hrp.CanCollide = origProps.Col
+                hrp.CanTouch = origProps.Touch
+                hrp.Massless = false
+            end) 
+        end 
+    end
+    OriginalRootSizes = {}
     
-    RestoreOptimization() -- Восстанавливаем всё после оптимизатора
+    RestoreOptimization() 
     
     pcall(function() keyrelease(Enum.KeyCode.LeftShift) end)
     pcall(function() Lighting.ClockTime = 14; Lighting.Brightness = 1; Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128); Lighting.GlobalShadows = true; Lighting.FogEnd = 1000 end)
@@ -492,7 +521,7 @@ local function TrackPlayer(p)
     end
     local function setupChar(char)
         local hum = char:WaitForChild("Humanoid", 5)
-        if hum then hum.HealthChanged:Connect(function(newHealth) local oldHealth = hum:GetAttribute("LastHealth") or newHealth; if newHealth < oldHealth then local dmg = oldHealth - newHealth; local head = char:FindFirstChild("Head"); if head and dmg > 0 then local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position); if onScreen and screenPos.Z > 0 then local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); local distToCenter = (center - Vector2.new(screenPos.X, screenPos.Y)).Magnitude; if distToCenter < 300 then SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false); AddNotification(dmg) end end end end; hum:SetAttribute("LastHealth", newHealth) end) end
+        if hum then hum.HealthChanged:Connect(function(newHealth) local oldHealth = hum:GetAttribute("LastHealth") or newHealth; if newHealth < oldHealth then local dmg = oldHealth - newHealth; local head = char:FindFirstChild("Head"); if head and dmg > 0 then local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position); if onScreen and screenPos.Z > 0 then local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); local distToCenter = (center - Vector2.new(screenPos.X, screenPos.Y)).Magnitude; if distToCenter < 350 then SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false); AddNotification(dmg) end end end end; hum:SetAttribute("LastHealth", newHealth) end) end
     end
     if p.Character then setupChar(p.Character) end; p.CharacterAdded:Connect(setupChar)
 end
@@ -525,7 +554,7 @@ local function CleanupESP(p)
     if ESPObjects[p] then local esp = ESPObjects[p]; pcall(function() esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove() end); ESPObjects[p] = nil end
 end
 
-Players.PlayerRemoving:Connect(function(p) CleanupESP(p); if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end; if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end end)
+Players.PlayerRemoving:Connect(function(p) CleanupESP(p); if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end; if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end; if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then OriginalRootSizes[p.Character.HumanoidRootPart] = nil end end)
 
 local function UpdateESP()
     if State.Unloaded then return end
@@ -607,6 +636,14 @@ table.insert(Connections, UserInputService.InputEnded:Connect(function(input, ga
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = false end
 end))
 
+-- Цикл обновления Reach раз в 0.5 сек
+task.spawn(function()
+    while not State.Unloaded do
+        if Config.ReachEnabled then UpdateReach() end
+        task.wait(0.5)
+    end
+end)
+
 table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
@@ -617,7 +654,7 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nX-Ray: %s | Light: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.XRayEnabled and "ON" or "OFF", Config.Fullbright and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nX-Ray: %s | Reach: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.XRayEnabled and "ON" or "OFF", Config.ReachEnabled and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
@@ -636,4 +673,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V29 Loaded. Optimizer active.")
+print("[pisunRust v2] V30 Loaded. Reach Hitbox active.")
