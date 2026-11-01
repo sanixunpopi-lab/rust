@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V30 - REACH HITBOX)
+    pisunRust v2 - OMNIX FRAMEWORK (V31 - NOCLIP & FLY)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -24,9 +24,6 @@ local Config = {
     VisibleAim = true,
     Prediction = true,
     
-    ReachEnabled = false,    -- НОВОЕ: Удар с дистанции
-    ReachValue = 20,         -- НОВОЕ: Размер хитбокса (до 100)
-    
     ESPEnabled = true,
     ESPMaxDist = 1000,
     ESPWeapon = true,
@@ -46,6 +43,8 @@ local Config = {
     OptParticles = false,    
     OptGraphics = false,     
     
+    FlySpeed = 50,           -- НОВОЕ: Скорость полета
+    
     AutoSprint = false,
     Fullbright = true,
     MenuKey = Enum.KeyCode.RightShift,
@@ -56,7 +55,9 @@ local Binds = {
     Aimbot = Enum.UserInputType.MouseButton2,
     ESP = Enum.KeyCode.E,
     Chams = Enum.KeyCode.C,
-    Sprint = Enum.KeyCode.Z
+    Sprint = Enum.KeyCode.Z,
+    Noclip = Enum.KeyCode.N,  -- НОВОЕ: Бинд на Noclip
+    Fly = Enum.KeyCode.F      -- НОВОЕ: Бинд на Fly
 }
 
 local State = {
@@ -68,7 +69,11 @@ local State = {
     FPS = 60,
     Frames = 0,
     Time = 0,
-    RainbowHue = 0
+    RainbowHue = 0,
+    
+    NoclipEnabled = false,    -- Состояние Noclip
+    FlyEnabled = false,       -- Состояние Fly
+    FlyBV = nil               -- BodyVelocity для полета
 }
 
 local ESPObjects = {}
@@ -79,7 +84,6 @@ local Connections = {}
 local OriginalTransparencies = {}
 local OriginalHeadSizes = {}
 local OriginalProps = {} 
-local OriginalRootSizes = {} -- Для Reach
 
 -- ============================================================================
 -- FULLBRIGHT
@@ -96,50 +100,6 @@ local function ApplyLighting()
     for _, v in pairs(Lighting:GetChildren()) do
         if v:IsA("Atmosphere") then v.Density = 0; v.Haze = 0
         elseif v:IsA("Sky") then v.StarCount = 0 end
-    end
-end
-
--- ============================================================================
--- СИСТЕМА REACH (УДАР С ДИСТАНЦИИ)
--- ============================================================================
-local function UpdateReach()
-    if State.Unloaded then return end
-    
-    -- Очистка старых записей
-    for hrp, _ in pairs(OriginalRootSizes) do
-        if not hrp or not hrp.Parent then OriginalRootSizes[hrp] = nil end
-    end
-
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                if not OriginalRootSizes[hrp] then
-                    OriginalRootSizes[hrp] = {Size = hrp.Size, Trans = hrp.Transparency, Col = hrp.CanCollide, Touch = hrp.CanTouch}
-                end
-                
-                if Config.ReachEnabled then
-                    local newSize = Vector3.new(Config.ReachValue, Config.ReachValue, Config.ReachValue)
-                    pcall(function()
-                        hrp.Size = newSize
-                        hrp.Transparency = 1
-                        hrp.CanCollide = false
-                        hrp.CanTouch = false
-                        hrp.Massless = true
-                    end)
-                else
-                    if OriginalRootSizes[hrp] then
-                        pcall(function()
-                            hrp.Size = OriginalRootSizes[hrp].Size
-                            hrp.Transparency = OriginalRootSizes[hrp].Trans
-                            hrp.CanCollide = OriginalRootSizes[hrp].Col
-                            hrp.CanTouch = OriginalRootSizes[hrp].Touch
-                            hrp.Massless = false
-                        end)
-                    end
-                end
-            end
-        end
     end
 end
 
@@ -412,16 +372,12 @@ local function CreateButton(parent, text, posY, callback, color)
     return btn
 end
 
--- Aimbot Tab
+-- Aimbot Tab (БЕЗ REACH)
 CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, 0, function(v) Config.AimbotEnabled = v end)
 CreateToggle(PageAimbot, "Visible Aim", Config.VisibleAim, 35, function(v) Config.VisibleAim = v end)
 CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 70, function(v) Config.FOV = v end)
 CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 120, function(v) Config.Smoothness = v / 100 end)
 local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 170, function() Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"; methodBtn.Text = "Method: " .. Config.AimbotMethod end)
-
--- НОВЫЕ КНОПКИ REACH
-CreateToggle(PageAimbot, "Reach Expander (Hitbox)", Config.ReachEnabled, 210, function(v) Config.ReachEnabled = v; if not v then UpdateReach() end end)
-CreateSlider(PageAimbot, "Reach Size (5-100)", 5, 100, Config.ReachValue, 245, function(v) Config.ReachValue = v end)
 
 -- Visuals Tab
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
@@ -440,12 +396,13 @@ CreateToggle(PageOptimizer, "Shakal Textures (Текстуры)", Config.OptText
 CreateToggle(PageOptimizer, "Remove Particles (Частицы)", Config.OptParticles, 35, function(v) Config.OptParticles = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Enabled ~= nil then pcall(function() obj.Enabled = props.Enabled end) end end end end)
 CreateToggle(PageOptimizer, "Flat Graphics (Тени/Материалы)", Config.OptGraphics, 70, function(v) Config.OptGraphics = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Material ~= nil then pcall(function() obj.Material = props.Material; obj.CastShadow = props.CastShadow end) end end end end)
 
--- Misc Tab
+-- Misc Tab (Добавлен ползунок скорости полета)
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
 CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
-CreateSlider(PageMisc, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, function(v) Config.ESPMaxDist = v end)
+CreateSlider(PageMisc, "Fly Speed", 10, 200, Config.FlySpeed, 70, function(v) Config.FlySpeed = v end)
+CreateSlider(PageMisc, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 120, function(v) Config.ESPMaxDist = v end)
 
--- Binds Tab
+-- Binds Tab (Добавлены бинды для Noclip и Fly)
 local bindBtns = {}
 local function CreateBindButton(parent, text, bindName, posY)
     local btn = CreateButton(parent, text .. ": " .. tostring(Binds[bindName]):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", ""), posY, function() State.WaitingForKey = bindName; btn.Text = "Нажми клавишу..."; btn.TextColor3 = Color3.fromRGB(255, 100, 100) end)
@@ -454,11 +411,13 @@ end
 CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
 CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
 CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
+CreateBindButton(PageBinds, "Noclip Key", "Noclip", 120) -- НОВОЕ
+CreateBindButton(PageBinds, "Fly Key", "Fly", 160)       -- НОВОЕ
 
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
 
 -- ============================================================================
--- UNLOAD
+-- UNLOAD (СБРОС ВСЕХ НАСТРОЕК И ВОССТАНОВЛЕНИЕ)
 -- ============================================================================
 local function FullCleanup()
     State.Unloaded = true
@@ -477,18 +436,18 @@ local function FullCleanup()
     OriginalTransparencies = {}
     for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end
     OriginalHeadSizes = {}
-    for hrp, origProps in pairs(OriginalRootSizes) do 
-        if hrp and hrp.Parent then 
-            pcall(function() 
-                hrp.Size = origProps.Size
-                hrp.Transparency = origProps.Trans
-                hrp.CanCollide = origProps.Col
-                hrp.CanTouch = origProps.Touch
-                hrp.Massless = false
-            end) 
-        end 
+    
+    -- Восстановление Noclip
+    if LocalPlayer.Character then
+        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") then pcall(function() v.CanCollide = true end) end
+        end
     end
-    OriginalRootSizes = {}
+    -- Восстановление Fly
+    if State.FlyBV then pcall(function() State.FlyBV:Destroy() end); State.FlyBV = nil end
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        pcall(function() LocalPlayer.Character.Humanoid.PlatformStand = false end)
+    end
     
     RestoreOptimization() 
     
@@ -496,7 +455,7 @@ local function FullCleanup()
     pcall(function() Lighting.ClockTime = 14; Lighting.Brightness = 1; Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128); Lighting.GlobalShadows = true; Lighting.FogEnd = 1000 end)
     print("[pisunRust v2] Unloaded. Everything restored.")
 end
-CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 115, FullCleanup, Color3.fromRGB(150, 30, 30))
+CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 170, FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
 -- СИСТЕМА УРОНА
@@ -554,7 +513,7 @@ local function CleanupESP(p)
     if ESPObjects[p] then local esp = ESPObjects[p]; pcall(function() esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove() end); ESPObjects[p] = nil end
 end
 
-Players.PlayerRemoving:Connect(function(p) CleanupESP(p); if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end; if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end; if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then OriginalRootSizes[p.Character.HumanoidRootPart] = nil end end)
+Players.PlayerRemoving:Connect(function(p) CleanupESP(p); if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end; if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end end)
 
 local function UpdateESP()
     if State.Unloaded then return end
@@ -625,10 +584,31 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
     if input.KeyCode == Config.MenuKey then State.MenuOpen = not State.MenuOpen; Main.Visible = State.MenuOpen; return end
     if State.WaitingForKey then local keyName = ""; if input.UserInputType == Enum.UserInputType.Keyboard then Binds[State.WaitingForKey] = input.KeyCode; keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "") else Binds[State.WaitingForKey] = input.UserInputType; keyName = tostring(input.UserInputType):gsub("Enum.UserInputType.", "") end; bindBtns[State.WaitingForKey].Text = State.WaitingForKey .. ": " .. keyName; bindBtns[State.WaitingForKey].TextColor3 = Color3.fromRGB(200, 200, 220); State.WaitingForKey = nil; return end
     if gameProcessed then return end
+    
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = true
     elseif input.UserInputType == Binds.ESP or input.KeyCode == Binds.ESP then Config.ESPEnabled = not Config.ESPEnabled
     elseif input.UserInputType == Binds.Chams or input.KeyCode == Binds.Chams then Config.ChamsEnabled = not Config.ChamsEnabled
-    elseif input.UserInputType == Binds.Sprint or input.KeyCode == Binds.Sprint then Config.AutoSprint = not Config.AutoSprint end
+    elseif input.UserInputType == Binds.Sprint or input.KeyCode == Binds.Sprint then Config.AutoSprint = not Config.AutoSprint 
+    
+    -- NOCLIP БИНД
+    elseif input.UserInputType == Binds.Noclip or input.KeyCode == Binds.Noclip then 
+        State.NoclipEnabled = not State.NoclipEnabled
+        if not State.NoclipEnabled and LocalPlayer.Character then
+            for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanCollide = true end
+            end
+        end
+        
+    -- FLY БИНД
+    elseif input.UserInputType == Binds.Fly or input.KeyCode == Binds.Fly then 
+        State.FlyEnabled = not State.FlyEnabled
+        if not State.FlyEnabled then
+            if State.FlyBV then pcall(function() State.FlyBV:Destroy() end); State.FlyBV = nil end
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+                pcall(function() LocalPlayer.Character.Humanoid.PlatformStand = false end)
+            end
+        end
+    end
 end))
 
 table.insert(Connections, UserInputService.InputEnded:Connect(function(input, gameProcessed)
@@ -636,25 +616,59 @@ table.insert(Connections, UserInputService.InputEnded:Connect(function(input, ga
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = false end
 end))
 
--- Цикл обновления Reach раз в 0.5 сек
-task.spawn(function()
-    while not State.Unloaded do
-        if Config.ReachEnabled then UpdateReach() end
-        task.wait(0.5)
-    end
-end)
-
 table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
+    
+    -- NOCLIP ЛОГИКА
+    if State.NoclipEnabled and LocalPlayer.Character then
+        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") and v.CanCollide then v.CanCollide = false end
+        end
+    end
+    
+    -- FLY ЛОГИКА
+    if State.FlyEnabled then
+        local char = LocalPlayer.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hrp and hum then
+                hum.PlatformStand = true
+                if not State.FlyBV then
+                    State.FlyBV = Instance.new("BodyVelocity")
+                    State.FlyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    State.FlyBV.Parent = hrp
+                end
+                
+                local moveDir = Vector3.new(0,0,0)
+                local camCFrame = Camera.CFrame
+                
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camCFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camCFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - camCFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + camCFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,1,0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0,1,0) end
+                
+                if moveDir.Magnitude > 0 then moveDir = moveDir.Unit end
+                State.FlyBV.Velocity = moveDir * Config.FlySpeed
+            end
+        end
+    else
+        if State.FlyBV then State.FlyBV:Destroy(); State.FlyBV = nil end
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            if LocalPlayer.Character.Humanoid.PlatformStand then LocalPlayer.Character.Humanoid.PlatformStand = false end
+        end
+    end
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
     if State.Time >= 1 then State.FPS = math.floor(State.Frames / State.Time); State.Frames = 0; State.Time = 0 end
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nX-Ray: %s | Reach: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.XRayEnabled and "ON" or "OFF", Config.ReachEnabled and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nNoclip: %s | Fly: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", State.NoclipEnabled and "ON" or "OFF", State.FlyEnabled and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
@@ -673,4 +687,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V30 Loaded. Reach Hitbox active.")
+print("[pisunRust v2] V31 Loaded. Noclip & Fly active.")
