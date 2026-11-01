@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V46 - MEMORY LEAK FIX & STABLE)
+    pisunRust v2 - OMNIX FRAMEWORK (V47 - ULTRA SHAKAL MODE)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -47,9 +47,11 @@ local Config = {
     HeadSizeEnabled = false, 
     HeadSizeValue = 1,       
     
+    -- ОПТИМИЗАТОР
     OptTextures = false,     
     OptParticles = false,    
     OptGraphics = false,     
+    UltraShakalMode = false, -- НОВОЕ: Супер Шакал
     
     AutoSprint = false,
     Fullbright = false,
@@ -84,6 +86,7 @@ local Connections = {}
 local OriginalTransparencies = {}
 local OriginalHeadSizes = {}
 local OriginalProps = {} 
+local OriginalUltraProps = {} 
 
 -- ============================================================================
 -- WALLSHOT (БЕЗОПАСНЫЙ ХУК)
@@ -139,12 +142,104 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ITEM ESP (БЕЗ УТЕЧКИ ПАМЯТИ)
+-- ULTRA SHAKAL OPTIMIZATION (СУПЕР ОПТИМИЗАЦИЯ)
+-- ============================================================================
+local function ApplyUltraOptimization()
+    if State.Unloaded or not Config.UltraShakalMode then return end
+    
+    -- 1. Отключаем световые эффекты
+    for _, v in pairs(Lighting:GetChildren()) do
+        if v:IsA("BloomEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("DepthOfFieldEffect") then
+            if not OriginalUltraProps[v] then OriginalUltraProps[v] = {Enabled = v.Enabled} end
+            v.Enabled = false
+        end
+    end
+    
+    -- 2. Отключаем всё лишнее в Workspace
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Trail") or obj:IsA("Beam") then
+            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
+            obj.Enabled = false
+        elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
+            obj.Enabled = false
+        elseif obj:IsA("BasePart") then
+            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Material = obj.Material, CastShadow = obj.CastShadow, Transparency = obj.Transparency} end
+            obj.Material = Enum.Material.SmoothPlastic
+            obj.CastShadow = false
+            if obj:IsA("MeshPart") then
+                if not OriginalUltraProps[obj].RenderFidelity then OriginalUltraProps[obj].RenderFidelity = obj.RenderFidelity end
+                obj.RenderFidelity = Enum.RenderFidelity.Performance
+            end
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Transparency = obj.Transparency} end
+            obj.Transparency = 1
+        elseif obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
+            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
+            obj.Enabled = false
+        elseif obj:IsA("Accessory") then
+            local handle = obj:FindFirstChildWhichIsA("BasePart")
+            if handle then
+                if not OriginalUltraProps[handle] then OriginalUltraProps[handle] = {Transparency = handle.Transparency} end
+                handle.Transparency = 1
+            end
+        end
+    end
+    
+    -- 3. Убиваем воду (чтобы не рендерилась)
+    local terrain = workspace:FindFirstChildOfClass("Terrain")
+    if terrain then
+        terrain.WaterWaveSize = 0
+        terrain.WaterWaveSpeed = 0
+        terrain.WaterReflectance = 0
+        terrain.WaterTransparency = 1
+    end
+end
+
+local function RestoreUltraOptimization()
+    for obj, props in pairs(OriginalUltraProps) do
+        if obj and obj.Parent then
+            pcall(function()
+                if props.Enabled ~= nil then obj.Enabled = props.Enabled end
+                if props.Material ~= nil then obj.Material = props.Material end
+                if props.CastShadow ~= nil then obj.CastShadow = props.CastShadow end
+                if props.Transparency ~= nil then obj.Transparency = props.Transparency end
+                if props.RenderFidelity ~= nil then obj.RenderFidelity = props.RenderFidelity end
+            end)
+        end
+    end
+    OriginalUltraProps = {}
+    
+    local terrain = workspace:FindFirstChildOfClass("Terrain")
+    if terrain then
+        terrain.WaterWaveSize = 0.15
+        terrain.WaterWaveSpeed = 10
+        terrain.WaterReflectance = 0.1
+        terrain.WaterTransparency = 0.1
+    end
+end
+
+-- Слушаем новые объекты (чтобы дым не появлялся вообще)
+workspace.DescendantAdded:Connect(function(obj)
+    if Config.UltraShakalMode and not State.Unloaded then
+        task.wait(0.1) -- Небольшая задержка, чтобы объект прогрузился
+        if obj and obj.Parent then
+            if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") then
+                obj.Enabled = false
+            elseif obj:IsA("BasePart") then
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.CastShadow = false
+            end
+        end
+    end
+end)
+
+-- ============================================================================
+-- ITEM ESP
 -- ============================================================================
 local function UpdateItemESP()
     if State.Unloaded then return end
     
-    -- Очистка удаленных/далеких предметов
     for item, esp in pairs(ItemESPObjects) do
         if not item or not item.Parent or not Config.ItemESPEnabled then
             esp.Box:Remove(); esp.Text:Remove()
@@ -213,7 +308,7 @@ local function UpdateItemESP()
 end
 
 -- ============================================================================
--- ОПТИМИЗАТОР
+-- БАЗОВЫЙ ОПТИМИЗАТОР
 -- ============================================================================
 local function OptimizeObject(obj)
     if not Config.OptTextures and not Config.OptParticles and not Config.OptGraphics then return end
@@ -258,10 +353,6 @@ local function RestoreOptimization()
     end
     OriginalProps = {}
 end
-
-workspace.DescendantAdded:Connect(function(obj)
-    if Config.OptTextures or Config.OptParticles or Config.OptGraphics then OptimizeObject(obj) end
-end)
 
 -- ============================================================================
 -- РАСШИРЕНИЕ ГОЛОВЫ
@@ -416,12 +507,10 @@ local Header = Instance.new("Frame"); Header.Size = UDim2.new(1, 0, 0, 45); Head
 local HeaderCorner = Instance.new("UICorner"); HeaderCorner.CornerRadius = UDim.new(0, 8); HeaderCorner.Parent = Header
 local Title = Instance.new("TextLabel"); Title.Size = UDim2.new(1, -20, 1, 0); Title.Position = UDim2.new(0, 15, 0, 0); Title.BackgroundTransparency = 1; Title.Text = "pisunRust v2 | Menu"; Title.TextColor3 = Color3.fromRGB(230, 230, 250); Title.Font = Enum.Font.GothamBold; Title.TextSize = 16; Title.TextXAlignment = Enum.TextXAlignment.Left; Title.Parent = Header
 
--- Левая панель вкладок
 local TabContainer = Instance.new("ScrollingFrame"); TabContainer.Size = UDim2.new(0, 130, 1, -45); TabContainer.Position = UDim2.new(0, 0, 0, 45); TabContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 30); TabContainer.BorderSizePixel = 0; TabContainer.ScrollBarThickness = 3; TabContainer.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 255); TabContainer.CanvasSize = UDim2.new(0, 0, 0, 0); TabContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y; TabContainer.Parent = Main
 local TabLayout = Instance.new("UIListLayout"); TabLayout.Padding = UDim.new(0, 5); TabLayout.SortOrder = Enum.SortOrder.LayoutOrder; TabLayout.Parent = TabContainer
 local TabPadding = Instance.new("UIPadding"); TabPadding.PaddingTop = UDim.new(0, 5); TabPadding.PaddingLeft = UDim.new(0, 5); TabPadding.PaddingRight = UDim.new(0, 5); TabPadding.Parent = TabContainer
 
--- Правая панель контента
 local ContentContainer = Instance.new("Frame"); ContentContainer.Size = UDim2.new(1, -150, 1, -65); ContentContainer.Position = UDim2.new(0, 140, 0, 55); ContentContainer.BackgroundTransparency = 1; ContentContainer.Parent = Main
 local Tabs, Pages = {}, {}
 
@@ -539,6 +628,10 @@ CreateToggle(PageVisuals, "Head Expander", Config.HeadSizeEnabled, function(v) C
 CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, function(v) Config.HeadSizeValue = v end)
 
 -- Optimizer
+CreateToggle(PageOptimizer, "ULTRA SHAKAL MODE (Max FPS)", Config.UltraShakalMode, function(v) 
+    Config.UltraShakalMode = v
+    if v then ApplyUltraOptimization() else RestoreUltraOptimization() end
+end)
 CreateToggle(PageOptimizer, "Shakal Textures", Config.OptTextures, function(v) Config.OptTextures = v; if v then ApplyOptimization() else RestoreOptimization() end end)
 CreateToggle(PageOptimizer, "Remove Particles", Config.OptParticles, function(v) Config.OptParticles = v; if v then ApplyOptimization() else RestoreOptimization() end end)
 CreateToggle(PageOptimizer, "Flat Graphics", Config.OptGraphics, function(v) Config.OptGraphics = v; if v then ApplyOptimization() else RestoreOptimization() end end)
@@ -561,7 +654,6 @@ end
 CreateBindButton(PageBinds, "Aimbot Key", "Aimbot")
 CreateBindButton(PageBinds, "ESP Toggle", "ESP")
 
--- Активация первой вкладки
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
 
 -- ============================================================================
@@ -574,20 +666,12 @@ local function FullCleanup()
     if ScreenGui then pcall(function() ScreenGui:Destroy() end) end
     pcall(function() FOVCircle:Remove() end)
     
-    for p, esp in pairs(ESPObjects) do 
-        pcall(function() 
-            esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
-            esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove();
-        end) 
-    end
+    for p, esp in pairs(ESPObjects) do pcall(function() esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove() end) end
     ESPObjects = {}
-    
     for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
     ChamsObjects = {}
-    
     for item, esp in pairs(ItemESPObjects) do pcall(function() esp.Box:Remove(); esp.Text:Remove() end) end
     ItemESPObjects = {}
-    
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     DamagePopups = {}
     
@@ -597,6 +681,7 @@ local function FullCleanup()
     OriginalHeadSizes = {}
     
     RestoreOptimization() 
+    RestoreUltraOptimization()
     
     pcall(function() keyrelease(Enum.KeyCode.LeftShift) end)
     pcall(function() Lighting.ClockTime = 14; Lighting.Brightness = 1; Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128); Lighting.GlobalShadows = true; Lighting.FogEnd = 1000 end)
@@ -634,7 +719,7 @@ end
 for _, p in pairs(Players:GetPlayers()) do TrackPlayer(p) end; Players.PlayerAdded:Connect(TrackPlayer)
 
 -- ============================================================================
--- ESP ИГРОКОВ (ФИКС УТЕЧКИ ПАМЯТИ)
+-- ESP ИГРОКОВ
 -- ============================================================================
 local FOVCircle = Drawing.new("Circle"); FOVCircle.Thickness = 2; FOVCircle.NumSides = 100; FOVCircle.Radius = Config.FOV; FOVCircle.Color = Color3.fromRGB(80, 120, 255); FOVCircle.Filled = false; FOVCircle.Visible = false
 
@@ -648,24 +733,19 @@ end
 local function RemoveESP(p)
     if ESPObjects[p] then 
         local esp = ESPObjects[p]
-        pcall(function() 
-            esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
-            esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove();
-        end)
+        pcall(function() esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove() end)
         ESPObjects[p] = nil 
     end
 end
 
 local function CreateESP(p)
-    RemoveESP(p) -- Чистим старое, если было
-    
+    RemoveESP(p)
     local esp = {}
     for i=1, 4 do esp["Box"..i] = Drawing.new("Line"); esp["Box"..i].Thickness = 1.5; esp["Box"..i].Visible = false end
     esp.Name = Drawing.new("Text"); esp.Name.Size = 15; esp.Name.Center = true; esp.Name.Outline = true; esp.Name.Font = 2; esp.Name.Color = Color3.fromRGB(255, 255, 255); esp.Name.Visible = false
     esp.Dist = Drawing.new("Text"); esp.Dist.Size = 13; esp.Dist.Center = true; esp.Dist.Outline = true; esp.Dist.Color = Color3.fromRGB(255, 200, 0); esp.Dist.Visible = false
     esp.Weapon = Drawing.new("Text"); esp.Weapon.Size = 14; esp.Weapon.Center = true; esp.Weapon.Outline = true; esp.Weapon.Color = Color3.fromRGB(255, 150, 50); esp.Weapon.Visible = false
     esp.HealthText = Drawing.new("Text"); esp.HealthText.Size = 14; esp.HealthText.Center = true; esp.HealthText.Outline = true; esp.HealthText.Color = Color3.fromRGB(0, 255, 0); esp.HealthText.Visible = false
-    
     ESPObjects[p] = esp
 end
 
@@ -732,7 +812,6 @@ local function UpdateESP()
                         else CleanupChams(p) end
 
                         if Config.ESPEnabled then
-                            -- Если ESP нет (например, только что зашел), создаем
                             if not ESPObjects[p] then CreateESP(p) end
                             local esp = ESPObjects[p]
                             
@@ -852,13 +931,14 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
     if Config.ItemESPEnabled then pcall(UpdateItemESP) end
+    if Config.UltraShakalMode then pcall(ApplyUltraOptimization) end
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
     if State.Time >= 1 then State.FPS = math.floor(State.Frames / State.Time); State.Frames = 0; State.Time = 0 end
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nChams: %s | Item ESP: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.PlayerChamsEnabled and "ON" or "OFF", Config.ItemESPEnabled and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nShakal: %s | Item ESP: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.UltraShakalMode and "ON" or "OFF", Config.ItemESPEnabled and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
     if Config.ESPEnabled or Config.PlayerChamsEnabled then pcall(UpdateESP) end
@@ -877,4 +957,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V46 Loaded. Memory Leak Fixed.")
+print("[pisunRust v2] V47 Loaded. Ultra Shakal Mode active.")
