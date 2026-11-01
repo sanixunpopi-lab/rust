@@ -1,7 +1,6 @@
 --[[
-    RUST CLONE CHEAT - OMNIX FRAMEWORK (V16 - PERFECT LIGHT & DAMAGE NUMBERS)
+    RUST CLONE CHEAT - OMNIX FRAMEWORK (V17 - BEAUTIFUL ESP & NO GHOSTS)
     Меню: RightShift (Правый Shift)
-    Паника: Кнопка в меню или клавиша END
 ]]
 
 local Players = game:GetService("Players")
@@ -27,7 +26,7 @@ local Config = {
     ESPEnabled = true,
     ESPMaxDist = 1000,
     ChamsEnabled = true,
-    DamageNumbers = true, -- НОВОЕ
+    DamageNumbers = true,
     
     AutoSprint = false,
     Fullbright = true,
@@ -56,12 +55,10 @@ local DamagePopups = {}
 local Connections = {}
 
 -- ============================================================================
--- FULLBRIGHT (ФИКС ЧЕРЕЗ RENDERSTEPPED - БЕЗ МЕРЦАНИЯ)
+-- FULLBRIGHT (БЕЗ МЕРЦАНИЯ)
 -- ============================================================================
 local function ApplyLighting()
     if not Config.Fullbright or State.Unloaded then return end
-    
-    -- Принудительно ставим день ровно перед отрисовкой кадра
     Lighting.ClockTime = 12
     Lighting.Brightness = 2.5
     Lighting.Ambient = Color3.fromRGB(255, 255, 255)
@@ -69,15 +66,9 @@ local function ApplyLighting()
     Lighting.GlobalShadows = false
     Lighting.FogEnd = 100000
     Lighting.FogStart = 0
-    
-    -- Убираем атмосферные эффекты (туман, облака)
     for _, v in pairs(Lighting:GetChildren()) do
-        if v:IsA("Atmosphere") then
-            v.Density = 0
-            v.Haze = 0
-        elseif v:IsA("Sky") then
-            v.StarCount = 0
-        end
+        if v:IsA("Atmosphere") then v.Density = 0; v.Haze = 0
+        elseif v:IsA("Sky") then v.StarCount = 0 end
     end
 end
 
@@ -120,7 +111,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "OMNIX CHEAT | V16 STABLE"
+Title.Text = "OMNIX CHEAT | V17 VISUALS"
 Title.TextColor3 = Color3.fromRGB(230, 230, 250)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -179,7 +170,6 @@ local function CreateTab(name)
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         page.Visible = true
     end)
-    
     return page
 end
 
@@ -313,7 +303,7 @@ end)
 
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "Chams", Config.ChamsEnabled, 35, function(v) Config.ChamsEnabled = v end)
-CreateToggle(PageVisuals, "Damage Numbers (Урон)", Config.DamageNumbers, 70, function(v) Config.DamageNumbers = v end)
+CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 70, function(v) Config.DamageNumbers = v end)
 CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 105, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
@@ -338,7 +328,10 @@ CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, function()
     for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
     ScreenGui:Destroy()
     FOVCircle:Remove()
-    for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
+    for _, esp in pairs(ESPObjects) do pcall(function() 
+        esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove()
+        esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove() 
+    end) end
     for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     keyrelease(Enum.KeyCode.LeftShift)
@@ -358,11 +351,10 @@ Pages["Aimbot"].Visible = true
 -- ============================================================================
 local function SpawnDamageNumber(position, damage)
     if not Config.DamageNumbers or State.Unloaded then return end
-    
     local text = Drawing.new("Text")
     text.Text = "-" .. tostring(math.floor(damage))
     text.Color = Color3.fromRGB(255, 50, 50)
-    text.Size = 22
+    text.Size = 20
     text.Center = true
     text.Outline = true
     text.OutlineColor = Color3.fromRGB(0, 0, 0)
@@ -377,7 +369,6 @@ local function SpawnDamageNumber(position, damage)
     end
 end
 
--- Подключаем отслеживание здоровья ко всем игрокам
 local function TrackPlayer(p)
     if p == LocalPlayer then return end
     local function setupChar(char)
@@ -404,7 +395,7 @@ for _, p in pairs(Players:GetPlayers()) do TrackPlayer(p) end
 Players.PlayerAdded:Connect(TrackPlayer)
 
 -- ============================================================================
--- FOV И ЛОГИКА
+-- УМНЫЙ И КРАСИВЫЙ ESP (С УГЛОВЫМИ БОКСАМИ И ПОЛОСКОЙ ЗДОРОВЬЯ)
 -- ============================================================================
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 2
@@ -424,30 +415,81 @@ local function IsVisible(targetChar)
     return workspace:Raycast(Camera.CFrame.Position, targetPart.Position - Camera.CFrame.Position, RayParams) == nil
 end
 
+-- Создание объектов ESP (Угловые боксы + HP Bar)
 local function CreateESPObject()
     local esp = {}
-    esp.Box = Drawing.new("Square"); esp.Box.Thickness = 1; esp.Box.Color = Color3.fromRGB(255, 60, 60); esp.Box.Filled = false; esp.Box.Visible = false
-    esp.Name = Drawing.new("Text"); esp.Name.Size = 14; esp.Name.Center = true; esp.Name.Outline = true; esp.Name.Color = Color3.fromRGB(255, 255, 255); esp.Name.Visible = false
-    esp.Health = Drawing.new("Text"); esp.Health.Size = 12; esp.Health.Center = true; esp.Health.Outline = true; esp.Health.Color = Color3.fromRGB(0, 255, 0); esp.Health.Visible = false
-    esp.Dist = Drawing.new("Text"); esp.Dist.Size = 12; esp.Dist.Center = true; esp.Dist.Outline = true; esp.Dist.Color = Color3.fromRGB(255, 200, 0); esp.Dist.Visible = false
+    -- 4 линии для углового бокса
+    for i=1, 4 do
+        esp["Box"..i] = Drawing.new("Line")
+        esp["Box"..i].Thickness = 1.5
+        esp["Box"..i].Color = Color3.fromRGB(255, 60, 60)
+        esp["Box"..i].Visible = false
+    end
+    
+    -- Имя
+    esp.Name = Drawing.new("Text")
+    esp.Name.Size = 15
+    esp.Name.Center = true
+    esp.Name.Outline = true
+    esp.Name.Font = 2 -- Обычный жирный шрифт
+    esp.Name.Color = Color3.fromRGB(255, 255, 255)
+    esp.Name.Visible = false
+
+    -- Дистанция
+    esp.Dist = Drawing.new("Text")
+    esp.Dist.Size = 13
+    esp.Dist.Center = true
+    esp.Dist.Outline = true
+    esp.Dist.Color = Color3.fromRGB(255, 200, 0)
+    esp.Dist.Visible = false
+
+    -- Полоска здоровья (Фон и Заполнение)
+    esp.HealthBarBg = Drawing.new("Square")
+    esp.HealthBarBg.Filled = true
+    esp.HealthBarBg.Color = Color3.fromRGB(0, 0, 0)
+    esp.HealthBarBg.Thickness = 1
+    esp.HealthBarBg.Visible = false
+
+    esp.HealthBarFill = Drawing.new("Square")
+    esp.HealthBarFill.Filled = true
+    esp.HealthBarFill.Color = Color3.fromRGB(0, 255, 0)
+    esp.HealthBarFill.Visible = false
+
     return esp
 end
+
+local function CleanupESP(p)
+    if ESPObjects[p] then
+        local esp = ESPObjects[p]
+        pcall(function()
+            esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove()
+            esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove()
+        end)
+        ESPObjects[p] = nil
+    end
+end
+
+-- Событие выхода игрока (ФИКС ЗАВИСШИХ ESP)
+Players.PlayerRemoving:Connect(function(p)
+    CleanupESP(p)
+    if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end
+end)
 
 local function UpdateESP()
     if State.Unloaded then return end
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then
-        for p, esp in pairs(ESPObjects) do esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false end
+        for _, esp in pairs(ESPObjects) do
+            esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false
+            esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false
+        end
         return
     end
 
-    for p, esp in pairs(ESPObjects) do
+    -- Очистка мертвых / вышедших
+    for p, _ in pairs(ESPObjects) do
         if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
-            pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end)
-            ESPObjects[p] = nil
+            CleanupESP(p)
         end
-    end
-    for p, chams in pairs(ChamsObjects) do
-        if not p or not p.Parent or not p.Character then pcall(function() chams:Destroy() end); ChamsObjects[p] = nil end
     end
 
     for _, p in pairs(Players:GetPlayers()) do
@@ -461,6 +503,7 @@ local function UpdateESP()
                 local dist = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
 
                 if dist <= Config.ESPMaxDist then
+                    -- CHAMS
                     if Config.ChamsEnabled then
                         if not ChamsObjects[p] or ChamsObjects[p].Parent ~= p.Character then
                             if ChamsObjects[p] then pcall(function() ChamsObjects[p]:Destroy() end) end
@@ -476,21 +519,66 @@ local function UpdateESP()
                         end
                     elseif ChamsObjects[p] then pcall(function() ChamsObjects[p]:Destroy() end); ChamsObjects[p] = nil end
 
+                    -- ESP
                     if Config.ESPEnabled then
                         if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
                         local esp = ESPObjects[p]
+                        
                         local screenHead, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
                         local screenRoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
 
                         if onScreen and screenHead.Z > 0 then
                             local height = math.abs(screenHead.Y - screenRoot.Y)
                             local width = height * 0.55
-                            esp.Box.Size = Vector2.new(width, height); esp.Box.Position = Vector2.new(screenHead.X - (width / 2), screenHead.Y); esp.Box.Visible = true
-                            esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, screenHead.Y - 32); esp.Name.Visible = true
-                            esp.Health.Text = "HP: " .. math.floor(hum.Health); esp.Health.Position = Vector2.new(screenHead.X, screenHead.Y + height + 2); esp.Health.Visible = true
-                            esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, screenHead.Y - 18); esp.Dist.Visible = true
+                            local x, y = screenHead.X - (width / 2), screenHead.Y
+
+                            -- УГЛОВОЙ БОКС (4 линии)
+                            local length = width * 0.25 -- Длина уголка
+                            -- Левый Верх
+                            esp.Box1.From = Vector2.new(x, y); esp.Box1.To = Vector2.new(x + length, y)
+                            esp.Box2.From = Vector2.new(x, y); esp.Box2.To = Vector2.new(x, y + length)
+                            -- Правый Низ
+                            esp.Box3.From = Vector2.new(x + width, y + height); esp.Box3.To = Vector2.new(x + width - length, y + height)
+                            esp.Box4.From = Vector2.new(x + width, y + height); esp.Box4.To = Vector2.new(x + width, y + height - length)
+                            
+                            esp.Box1.Visible = true; esp.Box2.Visible = true; esp.Box3.Visible = true; esp.Box4.Visible = true
+
+                            -- ИМЯ И ДИСТАНЦИЯ
+                            esp.Name.Text = p.Name
+                            esp.Name.Position = Vector2.new(screenHead.X, y - 30)
+                            esp.Name.Visible = true
+
+                            esp.Dist.Text = "[" .. dist .. "m]"
+                            esp.Dist.Position = Vector2.new(screenHead.X, y - 15)
+                            esp.Dist.Visible = true
+
+                            -- ПОЛОСКА ЗДОРОВЬЯ (Слева от бокса)
+                            local barWidth = 3
+                            local barHeight = height
+                            local barX = x - 6
+                            
+                            esp.HealthBarBg.Size = Vector2.new(barWidth, barHeight)
+                            esp.HealthBarBg.Position = Vector2.new(barX, y)
+                            esp.HealthBarBg.Visible = true
+
+                            local healthPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                            local fillHeight = barHeight * healthPercent
+                            
+                            esp.HealthBarFill.Size = Vector2.new(barWidth, fillHeight)
+                            esp.HealthBarFill.Position = Vector2.new(barX, y + (barHeight - fillHeight)) -- Заполняется снизу вверх
+                            
+                            -- Цвет от красного к зеленому
+                            if healthPercent > 0.5 then
+                                esp.HealthBarFill.Color = Color3.fromRGB(255 * (1 - (healthPercent - 0.5) * 2), 255, 0)
+                            else
+                                esp.HealthBarFill.Color = Color3.fromRGB(255, 255 * (healthPercent * 2), 0)
+                            end
+                            
+                            esp.HealthBarFill.Visible = true
                         else
-                            esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false
+                            -- Скрываем если за экраном
+                            esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false
+                            esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false
                         end
                     end
                 end
@@ -499,6 +587,9 @@ local function UpdateESP()
     end
 end
 
+-- ============================================================================
+-- AIMBOT ЛОГИКА
+-- ============================================================================
 local function GetTarget()
     if State.Unloaded or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then return nil end
     
@@ -542,7 +633,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
         for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
         ScreenGui:Destroy()
         FOVCircle:Remove()
-        for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
+        for p, _ in pairs(ESPObjects) do CleanupESP(p) end
         for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
         for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
         keyrelease(Enum.KeyCode.LeftShift)
@@ -582,26 +673,22 @@ table.insert(Connections, UserInputService.InputEnded:Connect(function(input, ga
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = false end
 end))
 
--- ОСНОВНОЙ ЦИКЛ (Отрисовка, Свет, Урон)
 table.insert(Connections, RunService.RenderStepped:Connect(function()
     if State.Unloaded then return end
 
-    -- Применяем свет каждый кадр ровно перед рендером (без мерцания)
     ApplyLighting()
 
-    -- FOV
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Config.FOV
     FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
 
-    -- ESP
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
 
-    -- Обновление цифр урона
+    -- Damage Popups
     for i = #DamagePopups, 1, -1 do
         local popup = DamagePopups[i]
         popup.Life = popup.Life - 0.02
-        popup.CurrentY = popup.CurrentY - 1.5 -- Скорость поднятия вверх
+        popup.CurrentY = popup.CurrentY - 1.5 
         popup.Text.Position = Vector2.new(popup.Text.Position.X, popup.CurrentY)
         popup.Text.Transparency = popup.Life
         
@@ -611,7 +698,6 @@ table.insert(Connections, RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Авто-бег
     if Config.AutoSprint then
         if not State.IsSprinting then keypress(Enum.KeyCode.LeftShift); State.IsSprinting = true end
     else
@@ -635,4 +721,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[OMNIX] V16 Loaded. Light fixed via RenderStepped. Damage Numbers added.")
+print("[OMNIX] V17 Loaded. Beautiful ESP, No Ghosting.")
