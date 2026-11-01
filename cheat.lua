@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V21 - NOTIFICATION BARS)
+    pisunRust v2 - OMNIX FRAMEWORK (V22 - RIGHT SIDE DAMAGE LOG)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -28,6 +28,7 @@ local Config = {
     ESPMaxDist = 1000,
     ChamsEnabled = true,
     DamageNumbers = true,
+    ShowDamageLog = true, -- НОВОЕ: Вкл/Выкл меню урона
     
     AutoSprint = false,
     Fullbright = true,
@@ -137,22 +138,58 @@ FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left
 FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top
 FeaturesLabel.Parent = TopHUD
 
--- ================= НОВАЯ СИСТЕМА УВЕДОМЛЕНИЙ (ПОЛОСКИ) =================
-local NotificationHolder = Instance.new("Frame")
-NotificationHolder.Size = UDim2.new(0, 250, 0, 120)
-NotificationHolder.Position = UDim2.new(0.5, -125, 1, -180) -- Снизу по центру
-NotificationHolder.BackgroundTransparency = 1
-NotificationHolder.Parent = ScreenGui
+-- ================= НОВОЕ МЕНЮ УРОНА СПРАВА =================
+local DamageLogPanel = Instance.new("Frame")
+DamageLogPanel.Size = UDim2.new(0, 180, 0, 160)
+DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80) -- Справа по центру
+DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+DamageLogPanel.BackgroundTransparency = 0.3
+DamageLogPanel.BorderSizePixel = 0
+DamageLogPanel.Visible = Config.ShowDamageLog
+DamageLogPanel.Parent = ScreenGui
 
-local UIListLayout = Instance.new("UIListLayout")
-UIListLayout.Parent = NotificationHolder
-UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-UIListLayout.Padding = UDim.new(0, 5)
+local DLCorner = Instance.new("UICorner")
+DLCorner.CornerRadius = UDim.new(0, 6)
+DLCorner.Parent = DamageLogPanel
 
--- Функция создания уведомления
+local DLStroke = Instance.new("UIStroke")
+DLStroke.Color = Color3.fromRGB(50, 50, 65)
+DLStroke.Thickness = 1
+DLStroke.Parent = DamageLogPanel
+
+local DLTitle = Instance.new("TextLabel")
+DLTitle.Size = UDim2.new(1, -10, 0, 25)
+DLTitle.Position = UDim2.new(0, 5, 0, 0)
+DLTitle.BackgroundTransparency = 1
+DLTitle.Text = "Damage Log"
+DLTitle.TextColor3 = Color3.fromRGB(200, 200, 220)
+DLTitle.Font = Enum.Font.GothamBold
+DLTitle.TextSize = 14
+DLTitle.TextXAlignment = Enum.TextXAlignment.Left
+DLTitle.Parent = DamageLogPanel
+
+local DLListLayout = Instance.new("UIListLayout")
+DLListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+DLListLayout.Padding = UDim.new(0, 4)
+DLListLayout.Parent = DamageLogPanel
+DLListLayout.Padding = UDim.new(0, 4)
+
+-- Контейнер для полосок (чтобы не наезжали на заголовок)
+local DLContainer = Instance.new("Frame")
+DLContainer.Size = UDim2.new(1, -10, 1, -30)
+DLContainer.Position = UDim2.new(0, 5, 0, 25)
+DLContainer.BackgroundTransparency = 1
+DLContainer.Parent = DamageLogPanel
+
+local DLContainerLayout = Instance.new("UIListLayout")
+DLContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+DLContainerLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+DLContainerLayout.Padding = UDim.new(0, 4)
+DLContainerLayout.Parent = DLContainer
+
+-- Функция добавления уведомления
 local function AddNotification(amount, isTaken)
-    if State.Unloaded then return end
+    if not Config.ShowDamageLog or State.Unloaded then return end
     amount = math.floor(amount)
     if amount <= 0 then return end
     
@@ -162,19 +199,19 @@ local function AddNotification(amount, isTaken)
     
     -- Создаем полоску
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, 0, 0, 25)
-    bar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-    bar.BackgroundTransparency = 0.3
+    bar.Size = UDim2.new(1, 0, 0, 24)
+    bar.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    bar.BackgroundTransparency = 0.2
     bar.BorderSizePixel = 0
-    bar.Parent = NotificationHolder
+    bar.Parent = DLContainer
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 4)
     corner.Parent = bar
     
-    -- Цветной индикатор слева
+    -- Индикатор
     local indicator = Instance.new("Frame")
-    indicator.Size = UDim2.new(0, 5, 1, 0)
+    indicator.Size = UDim2.new(0, 4, 1, 0)
     indicator.BackgroundColor3 = mainColor
     indicator.BorderSizePixel = 0
     indicator.Parent = bar
@@ -185,31 +222,31 @@ local function AddNotification(amount, isTaken)
     
     -- Текст
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -15, 1, 0)
-    label.Position = UDim2.new(0, 10, 0, 0)
+    label.Size = UDim2.new(1, -10, 1, 0)
+    label.Position = UDim2.new(0, 8, 0, 0)
     label.BackgroundTransparency = 1
     label.Text = textStr
     label.TextColor3 = mainColor
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = bar
     
-    -- Логика ограничения (максимум 3)
+    -- Ограничение в 3 полоски
     table.insert(ActiveNotifications, bar)
     if #ActiveNotifications > 3 then
         local oldest = table.remove(ActiveNotifications, 1)
         oldest:Destroy()
     end
     
-    -- Плавное исчезновение через 3 секунды
+    -- Плавное исчезновение
     task.spawn(function()
         task.wait(3)
         if bar and bar.Parent then
-            TweenService:Create(bar, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-            TweenService:Create(label, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
-            TweenService:Create(indicator, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-            task.wait(0.5)
+            TweenService:Create(bar, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+            TweenService:Create(label, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+            TweenService:Create(indicator, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+            task.wait(0.4)
             for i, v in pairs(ActiveNotifications) do
                 if v == bar then
                     table.remove(ActiveNotifications, i)
@@ -360,7 +397,8 @@ end)
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "Chams", Config.ChamsEnabled, 35, function(v) Config.ChamsEnabled = v end)
 CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 70, function(v) Config.DamageNumbers = v end)
-CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 105, function(v) Config.ESPMaxDist = v end)
+CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 105, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end) -- КНОПКА ВКЛ/ВЫКЛ
+CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 140, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
 CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
@@ -448,7 +486,7 @@ local function TrackPlayer(p)
                         local head = char:FindFirstChild("Head")
                         if head then 
                             SpawnDamageNumber(head.Position + Vector3.new(0, 2, 0), dmg, true) 
-                            AddNotification(dmg, true) -- ДОБАВЛЯЕМ ПОЛОСКУ (Получен)
+                            AddNotification(dmg, true) -- ДОБАВЛЯЕМ В МЕНЮ СПРАВА
                         end
                     end
                     hum:SetAttribute("LastHealth", newHealth)
@@ -470,7 +508,7 @@ local function TrackPlayer(p)
                     local head = char:FindFirstChild("Head")
                     if head and dmg > 0 then 
                         SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false)
-                        AddNotification(dmg, false) -- ДОБАВЛЯЕМ ПОЛОСКУ (Нанесен)
+                        AddNotification(dmg, false) -- ДОБАВЛЯЕМ В МЕНЮ СПРАВА
                     end
                 end
                 hum:SetAttribute("LastHealth", newHealth)
@@ -733,4 +771,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V21 Loaded. Notification Bars active.")
+print("[pisunRust v2] V22 Loaded. Right Side Damage Log active.")
