@@ -1,5 +1,5 @@
 --[[
-    RUST CLONE CHEAT - OMNIX FRAMEWORK (V13 - FULLBRIGHT FIX & PANIC)
+    RUST CLONE CHEAT - OMNIX FRAMEWORK (V14 - SMOOTH FULLBRIGHT)
     Меню: RightShift (Правый Shift)
     Паника: Кнопка в меню или клавиша END
 ]]
@@ -53,43 +53,80 @@ local State = {
 local ESPObjects = {}
 local ChamsObjects = {}
 local Connections = {}
+local ColorCorrection = nil
+local FullbrightConnection = nil
 
 -- ============================================================================
--- FULLBRIGHT (ФИКС: теперь применяется в цикле, так как игра сбрасывает)
+-- FULLBRIGHT (БЕЗ МОРГАНИЯ)
 -- ============================================================================
-local FullbrightConnection = nil
+local function ApplyLighting()
+    if not Config.Fullbright or State.Unloaded then return end
+    
+    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+    Lighting.Brightness = 2
+    Lighting.ClockTime = 12
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 100000
+    Lighting.FogStart = 0
+
+    -- Добавляем коррекцию цвета (убирает тени, делает картинку сочной)
+    if not ColorCorrection or not ColorCorrection.Parent then
+        ColorCorrection = Instance.new("ColorCorrectionEffect")
+        ColorCorrection.Brightness = 0.5
+        ColorCorrection.Contrast = 0.1
+        ColorCorrection.Saturation = 0.2
+        ColorCorrection.Parent = Camera
+    end
+
+    -- Убираем атмосферный туман
+    for _, v in pairs(Lighting:GetChildren()) do
+        if v:IsA("Atmosphere") then
+            v.Density = 0
+            v.Haze = 0
+            v.Glare = 0
+        end
+    end
+end
 
 local function ToggleFullbright(state)
     if FullbrightConnection then FullbrightConnection:Disconnect() end
     
     if state then
-        FullbrightConnection = RunService.Heartbeat:Connect(function()
-            if not Config.Fullbright or State.Unloaded then return end
-            
-            -- Убираем туман и ночь насильно каждый кадр
-            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-            Lighting.Brightness = 3
-            Lighting.ClockTime = 12
-            Lighting.GlobalShadows = false
-            Lighting.FogEnd = 100000
-            Lighting.FogStart = 0
-            
-            -- Удаляем атмосферные эффекты, если они мешают
-            for _, v in pairs(Lighting:GetChildren()) do
-                if v:IsA("Atmosphere") then
-                    v.Density = 0
-                    v.Haze = 0
-                end
+        ApplyLighting()
+        
+        -- Отслеживаем, если игра попытается изменить свет
+        local isUpdating = false
+        FullbrightConnection = Lighting.Changed:Connect(function(prop)
+            if not Config.Fullbright or State.Unloaded or isUpdating then return end
+            if prop == "ClockTime" or prop == "Ambient" or prop == "Brightness" or prop == "OutdoorAmbient" then
+                isUpdating = true
+                ApplyLighting()
+                task.wait(0.1)
+                isUpdating = false
             end
         end)
+        
+        -- Периодическая проверка (на случай, если игра меняет свет через CFrame или другие скрипты)
+        task.spawn(function()
+            while Config.Fullbright and not State.Unloaded do
+                ApplyLighting()
+                task.wait(1) 
+            end
+        end)
+        
     else
-        -- Возвращаем как было
+        -- Возврат в норму
         Lighting.Ambient = Color3.fromRGB(70, 70, 70)
         Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
         Lighting.Brightness = 1
         Lighting.GlobalShadows = true
         Lighting.FogEnd = 1000
+        
+        if ColorCorrection then
+            ColorCorrection:Destroy()
+            ColorCorrection = nil
+        end
     end
 end
 ToggleFullbright(Config.Fullbright)
@@ -133,7 +170,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "OMNIX CHEAT | V13 PANIC EDITION"
+Title.Text = "OMNIX CHEAT | V14 STABLE"
 Title.TextColor3 = Color3.fromRGB(230, 230, 250)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -345,17 +382,18 @@ CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
 CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
 CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
 
--- Кнопка ПАНИКИ
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, function()
     State.Unloaded = true
     for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
+    if FullbrightConnection then FullbrightConnection:Disconnect() end
     ScreenGui:Destroy()
     FOVCircle:Remove()
     for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
     for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
+    if ColorCorrection then ColorCorrection:Destroy() end
     keyrelease(Enum.KeyCode.LeftShift)
     ToggleFullbright(false)
-end, Color3.fromRGB(150, 30, 30)) -- Красная кнопка
+end, Color3.fromRGB(150, 30, 30))
 
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75)
 Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -496,13 +534,14 @@ end
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if State.Unloaded then return end
     if input.KeyCode == Config.PanicKey then
-        -- Активация паники по клавише END
         State.Unloaded = true
         for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
+        if FullbrightConnection then FullbrightConnection:Disconnect() end
         ScreenGui:Destroy()
         FOVCircle:Remove()
         for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
         for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
+        if ColorCorrection then ColorCorrection:Destroy() end
         keyrelease(Enum.KeyCode.LeftShift)
         ToggleFullbright(false)
         return
@@ -568,4 +607,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[OMNIX] V13 Loaded. Fullbright Fixed. Panic Button Ready.")
+print("[OMNIX] V14 Loaded. Fullbright fixed without flickering.")
