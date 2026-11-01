@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V24 - WEAPON FIX & DEALT-ONLY LOG)
+    pisunRust v2 - OMNIX FRAMEWORK (V25 - PURE DEALT LOG & PRO WEAPON ESP)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -81,31 +81,31 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ПОИСК И СОКРАЩЕНИЕ ОРУЖИЯ (ФИКС)
+-- ПОИСК И СОКРАЩЕНИЕ ОРУЖИЯ (УЛУЧШЕННЫЙ)
 -- ============================================================================
 local function GetWeaponName(character)
-    -- 1. Ищем стандартный Tool в персонаже
+    -- 1. Стандартный Tool
     local tool = character:FindFirstChildOfClass("Tool")
     if tool then return tool.Name end
     
-    -- 2. Ищем Tool в руках (часто бывает в клонах)
+    -- 2. Ищем в руках (RightHand / LeftHand)
     local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
-    local leftHand = character:FindFirstChild("LeftHand") or character:FindFirstChild("Left Arm")
-    
     if rightHand then
         local toolInHand = rightHand:FindFirstChildOfClass("Tool")
         if toolInHand then return toolInHand.Name end
-        -- Иногда оружие это просто модель в руке
+        
+        -- 3. Кастомные модели оружия (ищем по ключевым словам)
         for _, child in pairs(rightHand:GetChildren()) do
-            if child:IsA("Model") or child:IsA("Part") then
-                if string.find(string.lower(child.Name), "gun") or string.find(string.lower(child.Name), "rifle") or string.find(string.lower(child.Name), "bow") or string.find(string.lower(child.Name), "sword") then
+            if child:IsA("Model") or child:IsA("Part") or child:IsA("MeshPart") then
+                local name = string.lower(child.Name)
+                if string.find(name, "gun") or string.find(name, "rifle") or string.find(name, "bow") or string.find(name, "sword") or string.find(name, "pistol") or string.find(name, "shotgun") or string.find(name, "weapon") or string.find(name, "tool") then
                     return child.Name
                 end
             end
         end
     end
     
-    -- 3. Ищем вообще везде внутри персонажа
+    -- 4. Ищем вообще везде внутри персонажа
     for _, v in pairs(character:GetDescendants()) do
         if v:IsA("Tool") then return v.Name end
     end
@@ -168,7 +168,7 @@ local FeaturesLabel = Instance.new("TextLabel")
 FeaturesLabel.Size = UDim2.new(1, -10, 0, 35); FeaturesLabel.Position = UDim2.new(0, 5, 0, 45); FeaturesLabel.BackgroundTransparency = 1
 FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nChams: ON | Light: ON"; FeaturesLabel.Font = Enum.Font.GothamSemibold; FeaturesLabel.TextSize = 12; FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left; FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top; FeaturesLabel.Parent = TopHUD
 
--- Меню урона
+-- Меню урона (ТОЛЬКО НАНЕСЕННЫЙ)
 local DamageLogPanel = Instance.new("Frame")
 DamageLogPanel.Size = UDim2.new(0, 180, 0, 160); DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80)
 DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20); DamageLogPanel.BackgroundTransparency = 0.3; DamageLogPanel.BorderSizePixel = 0; DamageLogPanel.Visible = Config.ShowDamageLog; DamageLogPanel.Parent = ScreenGui
@@ -177,13 +177,12 @@ local DLStroke = Instance.new("UIStroke"); DLStroke.Color = Color3.fromRGB(50, 5
 
 local DLTitle = Instance.new("TextLabel")
 DLTitle.Size = UDim2.new(1, -10, 0, 25); DLTitle.Position = UDim2.new(0, 5, 0, 0); DLTitle.BackgroundTransparency = 1
-DLTitle.Text = "Damage Log (Dealt)"; DLTitle.TextColor3 = Color3.fromRGB(200, 200, 220); DLTitle.Font = Enum.Font.GothamBold; DLTitle.TextSize = 14; DLTitle.TextXAlignment = Enum.TextXAlignment.Left; DLTitle.Parent = DamageLogPanel
+DLTitle.Text = "Your Damage"; DLTitle.TextColor3 = Color3.fromRGB(200, 200, 220); DLTitle.Font = Enum.Font.GothamBold; DLTitle.TextSize = 14; DLTitle.TextXAlignment = Enum.TextXAlignment.Left; DLTitle.Parent = DamageLogPanel
 
 local DLContainer = Instance.new("Frame")
 DLContainer.Size = UDim2.new(1, -10, 1, -30); DLContainer.Position = UDim2.new(0, 5, 0, 25); DLContainer.BackgroundTransparency = 1; DLContainer.Parent = DamageLogPanel
 local DLContainerLayout = Instance.new("UIListLayout"); DLContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder; DLContainerLayout.VerticalAlignment = Enum.VerticalAlignment.Top; DLContainerLayout.Padding = UDim.new(0, 4); DLContainerLayout.Parent = DLContainer
 
--- ТЕПЕРЬ ЛОГ ТОЛЬКО ДЛЯ НАНЕСЕННОГО УРОНА
 local function AddNotification(amount)
     if not Config.ShowDamageLog or State.Unloaded then return end
     amount = math.floor(amount)
@@ -353,7 +352,7 @@ end
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
--- СИСТЕМА УРОНА (ТЕПЕРЬ ЛОГ ТОЛЬКО НАНЕСЕННОГО)
+-- СИСТЕМА УРОНА (ТОЛЬКО ТВОЙ УРОН)
 -- ============================================================================
 local function SpawnDamageNumber(position, damage, isTaken)
     if not Config.DamageNumbers or State.Unloaded then return end
@@ -378,7 +377,7 @@ local function TrackPlayer(p)
                     if newHealth < oldHealth then
                         local dmg = oldHealth - newHealth
                         local head = char:FindFirstChild("Head")
-                        -- Показываем только цифру, в лог не пишем
+                        -- Показываем цифру над собой, но в лог НЕ пишем
                         if head then SpawnDamageNumber(head.Position + Vector3.new(0, 2, 0), dmg, true) end
                     end
                     hum:SetAttribute("LastHealth", newHealth)
@@ -398,9 +397,20 @@ local function TrackPlayer(p)
                 if newHealth < oldHealth then
                     local dmg = oldHealth - newHealth
                     local head = char:FindFirstChild("Head")
-                    if head and dmg > 0 then 
-                        SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false)
-                        AddNotification(dmg) -- ТОЛЬКО НАНЕСЕННЫЙ УРОН В ЛОГ
+                    
+                    -- ФИКС: Проверяем, смотрим ли мы на цель, чтобы записать урон ТОЛЬКО от нас
+                    if head and dmg > 0 then
+                        local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                        if onScreen and screenPos.Z > 0 then
+                            local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                            local distToCenter = (center - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+                            
+                            -- Если цель в радиусе 250 пикселей от нашего прицела, считаем, что это МЫ попали
+                            if distToCenter < 250 then
+                                SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false)
+                                AddNotification(dmg) 
+                            end
+                        end
                     end
                 end
                 hum:SetAttribute("LastHealth", newHealth)
@@ -512,23 +522,17 @@ local function UpdateESP()
                             
                             esp.Box1.Visible = true; esp.Box2.Visible = true; esp.Box3.Visible = true; esp.Box4.Visible = true
 
-                            -- Сместили текст чуть выше, чтобы оружие влезло
                             esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, y - 45); esp.Name.Visible = true
                             esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, y - 30); esp.Dist.Visible = true
                             
-                            -- ФИКС ОРУЖИЯ
                             if Config.ESPWeapon then
                                 local weaponName = GetWeaponName(p.Character)
                                 if weaponName then
                                     esp.Weapon.Text = "[" .. GetShortWeaponName(weaponName) .. "]"
                                     esp.Weapon.Position = Vector2.new(screenHead.X, y - 15)
                                     esp.Weapon.Visible = true
-                                else
-                                    esp.Weapon.Visible = false
-                                end
-                            else
-                                esp.Weapon.Visible = false
-                            end
+                                else esp.Weapon.Visible = false end
+                            else esp.Weapon.Visible = false end
 
                             local barWidth = 3; local barHeight = height; local barX = x - 6
                             esp.HealthBarBg.Size = Vector2.new(barWidth, barHeight); esp.HealthBarBg.Position = Vector2.new(barX, y); esp.HealthBarBg.Visible = true
@@ -581,7 +585,7 @@ local function GetTarget()
 end
 
 -- ============================================================================
--- ВВОД
+-- ВВОД И ЦИКЛЫ
 -- ============================================================================
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if State.Unloaded then return end
@@ -614,15 +618,13 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     State.Time = State.Time + deltaTime
     if State.Time >= 1 then
         State.FPS = math.floor(State.Frames / State.Time)
-        State.Frames = 0
-        State.Time = 0
+        State.Frames = 0; State.Time = 0
     end
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1
     local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor
-    FPSLabel.Text = "FPS: " .. State.FPS
-    FPSLabel.TextColor3 = RainbowColor
+    FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor
     FeaturesLabel.TextColor3 = RainbowColor
     
     FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nChams: %s | Light: %s", 
@@ -668,4 +670,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V24 Loaded. Dealt-only log and Robust Weapon ESP active.")
+print("[pisunRust v2] V25 Loaded. Damage Log strictly for user's damage.")
