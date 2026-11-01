@@ -1,5 +1,5 @@
 --[[
-    RUST CLONE CHEAT - OMNIX FRAMEWORK (V15 - PERFECT FULLBRIGHT)
+    RUST CLONE CHEAT - OMNIX FRAMEWORK (V16 - PERFECT LIGHT & DAMAGE NUMBERS)
     Меню: RightShift (Правый Shift)
     Паника: Кнопка в меню или клавиша END
 ]]
@@ -7,7 +7,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 
@@ -28,6 +27,7 @@ local Config = {
     ESPEnabled = true,
     ESPMaxDist = 1000,
     ChamsEnabled = true,
+    DamageNumbers = true, -- НОВОЕ
     
     AutoSprint = false,
     Fullbright = true,
@@ -52,60 +52,34 @@ local State = {
 
 local ESPObjects = {}
 local ChamsObjects = {}
+local DamagePopups = {}
 local Connections = {}
 
 -- ============================================================================
--- FULLBRIGHT БЕЗ МОРГАНИЯ (ХУК LIGHTING)
+-- FULLBRIGHT (ФИКС ЧЕРЕЗ RENDERSTEPPED - БЕЗ МЕРЦАНИЯ)
 -- ============================================================================
-local FullbrightHooked = false
-
-local function ApplyFullbright(state)
-    if state then
-        -- Удаляем туман и атмосферу
-        for _, v in pairs(Lighting:GetChildren()) do
-            if v:IsA("Atmosphere") or v:IsA("Sky") or v:IsA("Clouds") then
-                pcall(function() v:Destroy() end)
-            end
+local function ApplyLighting()
+    if not Config.Fullbright or State.Unloaded then return end
+    
+    -- Принудительно ставим день ровно перед отрисовкой кадра
+    Lighting.ClockTime = 12
+    Lighting.Brightness = 2.5
+    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 100000
+    Lighting.FogStart = 0
+    
+    -- Убираем атмосферные эффекты (туман, облака)
+    for _, v in pairs(Lighting:GetChildren()) do
+        if v:IsA("Atmosphere") then
+            v.Density = 0
+            v.Haze = 0
+        elseif v:IsA("Sky") then
+            v.StarCount = 0
         end
-
-        -- Ставим идеальные настройки света (как днем)
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 12
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 100000
-        Lighting.FogStart = 0
-
-        -- ХУК: Блокируем игре возможность менять свет
-        if not FullbrightHooked and type(hookmetamethod) == "function" then
-            FullbrightHooked = true
-            local mt = getrawmetatable(game)
-            local oldIndex = mt.__newindex
-            setreadonly(mt, false)
-            
-            mt.__newindex = newcclosure(function(self, key, value)
-                -- Если цель - Lighting и Fullbright включен, блокируем изменения
-                if self == Lighting and Config.Fullbright and not State.Unloaded then
-                    if key == "Ambient" or key == "OutdoorAmbient" or key == "Brightness" or key == "ClockTime" or key == "GlobalShadows" or key == "FogEnd" or key == "FogStart" then
-                        return -- Игнорируем попытку игры изменить это
-                    end
-                end
-                return oldIndex(self, key, value)
-            end)
-            setreadonly(mt, true)
-        end
-    else
-        -- Возврат в норму (если хук стоит, игра сама вернет свои настройки при следующем цикле)
-        Lighting.Ambient = Color3.fromRGB(70, 70, 70)
-        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-        Lighting.Brightness = 1
-        Lighting.GlobalShadows = true
-        Lighting.FogEnd = 1000
     end
 end
-
-ApplyFullbright(Config.Fullbright)
 
 -- ============================================================================
 -- UI ФРЕЙМВОРК
@@ -146,7 +120,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "OMNIX CHEAT | V15 NO FLICKER"
+Title.Text = "OMNIX CHEAT | V16 STABLE"
 Title.TextColor3 = Color3.fromRGB(230, 230, 250)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -328,7 +302,7 @@ local function CreateButton(parent, text, posY, callback, color)
 end
 
 CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, 0, function(v) Config.AimbotEnabled = v end)
-CreateToggle(PageAimbot, "Visible Aim (Только видимых)", Config.VisibleAim, 35, function(v) Config.VisibleAim = v end)
+CreateToggle(PageAimbot, "Visible Aim", Config.VisibleAim, 35, function(v) Config.VisibleAim = v end)
 CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 70, function(v) Config.FOV = v end)
 CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 120, function(v) Config.Smoothness = v / 100 end)
 
@@ -338,11 +312,12 @@ local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 17
 end)
 
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
-CreateToggle(PageVisuals, "Chams (Подсветка)", Config.ChamsEnabled, 35, function(v) Config.ChamsEnabled = v end)
-CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, function(v) Config.ESPMaxDist = v end)
+CreateToggle(PageVisuals, "Chams", Config.ChamsEnabled, 35, function(v) Config.ChamsEnabled = v end)
+CreateToggle(PageVisuals, "Damage Numbers (Урон)", Config.DamageNumbers, 70, function(v) Config.DamageNumbers = v end)
+CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 105, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
-CreateToggle(PageMisc, "Fullbright (Всегда светло)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyFullbright(v) end)
+CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
 
 local bindBtns = {}
 local function CreateBindButton(parent, text, bindName, posY)
@@ -365,13 +340,68 @@ CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, function()
     FOVCircle:Remove()
     for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
     for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
+    for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     keyrelease(Enum.KeyCode.LeftShift)
-    ApplyFullbright(false)
+    Lighting.ClockTime = 14
+    Lighting.Brightness = 1
+    Lighting.Ambient = Color3.fromRGB(70, 70, 70)
+    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    Lighting.GlobalShadows = true
 end, Color3.fromRGB(150, 30, 30))
 
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75)
 Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Pages["Aimbot"].Visible = true
+
+-- ============================================================================
+-- СИСТЕМА УРОНА (DAMAGE NUMBERS)
+-- ============================================================================
+local function SpawnDamageNumber(position, damage)
+    if not Config.DamageNumbers or State.Unloaded then return end
+    
+    local text = Drawing.new("Text")
+    text.Text = "-" .. tostring(math.floor(damage))
+    text.Color = Color3.fromRGB(255, 50, 50)
+    text.Size = 22
+    text.Center = true
+    text.Outline = true
+    text.OutlineColor = Color3.fromRGB(0, 0, 0)
+    text.Transparency = 1
+    
+    local screenPos, onScreen = Camera:WorldToViewportPoint(position)
+    if onScreen then
+        text.Position = Vector2.new(screenPos.X, screenPos.Y)
+        table.insert(DamagePopups, {Text = text, Life = 1, StartY = screenPos.Y, CurrentY = screenPos.Y})
+    else
+        text:Remove()
+    end
+end
+
+-- Подключаем отслеживание здоровья ко всем игрокам
+local function TrackPlayer(p)
+    if p == LocalPlayer then return end
+    local function setupChar(char)
+        local hum = char:WaitForChild("Humanoid", 5)
+        if hum then
+            hum.HealthChanged:Connect(function(newHealth)
+                local oldHealth = hum:GetAttribute("LastHealth") or newHealth
+                if newHealth < oldHealth then
+                    local dmg = oldHealth - newHealth
+                    local head = char:FindFirstChild("Head")
+                    if head and dmg > 0 then
+                        SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg)
+                    end
+                end
+                hum:SetAttribute("LastHealth", newHealth)
+            end)
+        end
+    end
+    if p.Character then setupChar(p.Character) end
+    p.CharacterAdded:Connect(setupChar)
+end
+
+for _, p in pairs(Players:GetPlayers()) do TrackPlayer(p) end
+Players.PlayerAdded:Connect(TrackPlayer)
 
 -- ============================================================================
 -- FOV И ЛОГИКА
@@ -514,8 +544,13 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
         FOVCircle:Remove()
         for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
         for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
+        for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
         keyrelease(Enum.KeyCode.LeftShift)
-        ApplyFullbright(false)
+        Lighting.ClockTime = 14
+        Lighting.Brightness = 1
+        Lighting.Ambient = Color3.fromRGB(70, 70, 70)
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        Lighting.GlobalShadows = true
         return
     end
 
@@ -547,15 +582,36 @@ table.insert(Connections, UserInputService.InputEnded:Connect(function(input, ga
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = false end
 end))
 
+-- ОСНОВНОЙ ЦИКЛ (Отрисовка, Свет, Урон)
 table.insert(Connections, RunService.RenderStepped:Connect(function()
     if State.Unloaded then return end
 
+    -- Применяем свет каждый кадр ровно перед рендером (без мерцания)
+    ApplyLighting()
+
+    -- FOV
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Config.FOV
     FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
 
+    -- ESP
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
 
+    -- Обновление цифр урона
+    for i = #DamagePopups, 1, -1 do
+        local popup = DamagePopups[i]
+        popup.Life = popup.Life - 0.02
+        popup.CurrentY = popup.CurrentY - 1.5 -- Скорость поднятия вверх
+        popup.Text.Position = Vector2.new(popup.Text.Position.X, popup.CurrentY)
+        popup.Text.Transparency = popup.Life
+        
+        if popup.Life <= 0 then
+            popup.Text:Remove()
+            table.remove(DamagePopups, i)
+        end
+    end
+
+    -- Авто-бег
     if Config.AutoSprint then
         if not State.IsSprinting then keypress(Enum.KeyCode.LeftShift); State.IsSprinting = true end
     else
@@ -579,4 +635,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[OMNIX] V15 Loaded. Perfect Fullbright (No Flicker). Color Correction removed.")
+print("[OMNIX] V16 Loaded. Light fixed via RenderStepped. Damage Numbers added.")
