@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V47 - ULTRA SHAKAL MODE)
+    pisunRust v2 - OMNIX FRAMEWORK (V48 - ONE-COLOR ULTRA SHAKAL)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -51,7 +51,7 @@ local Config = {
     OptTextures = false,     
     OptParticles = false,    
     OptGraphics = false,     
-    UltraShakalMode = false, -- НОВОЕ: Супер Шакал
+    UltraShakalMode = false, -- Супер Шакал (1 цвет)
     
     AutoSprint = false,
     Fullbright = false,
@@ -142,7 +142,7 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ULTRA SHAKAL OPTIMIZATION (СУПЕР ОПТИМИЗАЦИЯ)
+-- ULTRA SHAKAL OPTIMIZATION (1 ЦВЕТ НА ТЕКСТУРУ)
 -- ============================================================================
 local function ApplyUltraOptimization()
     if State.Unloaded or not Config.UltraShakalMode then return end
@@ -155,25 +155,47 @@ local function ApplyUltraOptimization()
         end
     end
     
-    -- 2. Отключаем всё лишнее в Workspace
+    -- 2. Проходимся по всем объектам и делаем их однотонными
     for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("Trail") or obj:IsA("Beam") then
+        if obj:IsA("BasePart") then
+            if not OriginalUltraProps[obj] then 
+                OriginalUltraProps[obj] = {
+                    Color = obj.Color, 
+                    Material = obj.Material, 
+                    CastShadow = obj.CastShadow, 
+                    Transparency = obj.Transparency,
+                    TextureID = obj:IsA("MeshPart") and obj.TextureID or nil
+                } 
+            end
+            
+            -- Ставим сплошной серый цвет, простой пластик и убираем тени
+            obj.Color = Color3.fromRGB(163, 162, 165) 
+            obj.Material = Enum.Material.SmoothPlastic
+            obj.CastShadow = false
+            
+            -- Убираем текстуры с MeshPart
+            if obj:IsA("MeshPart") and obj.TextureID ~= "" then
+                obj.TextureID = ""
+            end
+            
+        elseif obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
+            -- Полностью скрываем текстуры, декали и PBR-материалы
+            if not OriginalUltraProps[obj] then 
+                OriginalUltraProps[obj] = {Transparency = obj.Transparency, Enabled = obj.Enabled} 
+            end
+            
+            if obj:IsA("SurfaceAppearance") then
+                obj.Enabled = false
+            else
+                obj.Transparency = 1
+            end
+            
+        elseif obj:IsA("Trail") or obj:IsA("Beam") then
             if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
             obj.Enabled = false
         elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
             if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
             obj.Enabled = false
-        elseif obj:IsA("BasePart") then
-            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Material = obj.Material, CastShadow = obj.CastShadow, Transparency = obj.Transparency} end
-            obj.Material = Enum.Material.SmoothPlastic
-            obj.CastShadow = false
-            if obj:IsA("MeshPart") then
-                if not OriginalUltraProps[obj].RenderFidelity then OriginalUltraProps[obj].RenderFidelity = obj.RenderFidelity end
-                obj.RenderFidelity = Enum.RenderFidelity.Performance
-            end
-        elseif obj:IsA("Decal") or obj:IsA("Texture") then
-            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Transparency = obj.Transparency} end
-            obj.Transparency = 1
         elseif obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
             if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
             obj.Enabled = false
@@ -200,11 +222,12 @@ local function RestoreUltraOptimization()
     for obj, props in pairs(OriginalUltraProps) do
         if obj and obj.Parent then
             pcall(function()
-                if props.Enabled ~= nil then obj.Enabled = props.Enabled end
+                if props.Color ~= nil then obj.Color = props.Color end
                 if props.Material ~= nil then obj.Material = props.Material end
                 if props.CastShadow ~= nil then obj.CastShadow = props.CastShadow end
                 if props.Transparency ~= nil then obj.Transparency = props.Transparency end
-                if props.RenderFidelity ~= nil then obj.RenderFidelity = props.RenderFidelity end
+                if props.TextureID ~= nil then obj.TextureID = props.TextureID end
+                if props.Enabled ~= nil then obj.Enabled = props.Enabled end
             end)
         end
     end
@@ -219,16 +242,22 @@ local function RestoreUltraOptimization()
     end
 end
 
--- Слушаем новые объекты (чтобы дым не появлялся вообще)
+-- Слушаем новые объекты (чтобы новые текстуры не появлялись)
 workspace.DescendantAdded:Connect(function(obj)
     if Config.UltraShakalMode and not State.Unloaded then
-        task.wait(0.1) -- Небольшая задержка, чтобы объект прогрузился
+        task.wait(0.1) 
         if obj and obj.Parent then
-            if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") then
-                obj.Enabled = false
-            elseif obj:IsA("BasePart") then
+            if obj:IsA("BasePart") then
+                obj.Color = Color3.fromRGB(163, 162, 165)
                 obj.Material = Enum.Material.SmoothPlastic
                 obj.CastShadow = false
+                if obj:IsA("MeshPart") then obj.TextureID = "" end
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Transparency = 1
+            elseif obj:IsA("SurfaceAppearance") then
+                obj.Enabled = false
+            elseif obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") then
+                obj.Enabled = false
             end
         end
     end
@@ -628,7 +657,7 @@ CreateToggle(PageVisuals, "Head Expander", Config.HeadSizeEnabled, function(v) C
 CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, function(v) Config.HeadSizeValue = v end)
 
 -- Optimizer
-CreateToggle(PageOptimizer, "ULTRA SHAKAL MODE (Max FPS)", Config.UltraShakalMode, function(v) 
+CreateToggle(PageOptimizer, "ULTRA SHAKAL MODE (1 Color)", Config.UltraShakalMode, function(v) 
     Config.UltraShakalMode = v
     if v then ApplyUltraOptimization() else RestoreUltraOptimization() end
 end)
@@ -957,4 +986,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V47 Loaded. Ultra Shakal Mode active.")
+print("[pisunRust v2] V48 Loaded. One-Color Ultra Shakal active.")
