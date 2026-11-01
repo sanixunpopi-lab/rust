@@ -1,5 +1,5 @@
 --[[
-    RUST CLONE CHEAT - OMNIX FRAMEWORK (V18 - HUD & PERFECT UNLOAD)
+    pisunRust - OMNIX FRAMEWORK (V19 - RAINBOW HUD & FPS)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -48,7 +48,13 @@ local State = {
     IsSprinting = false,
     WaitingForKey = nil,
     Unloaded = false,
-    Stats = { Dealt = 0, Taken = 0 } -- Счетчики урона
+    Stats = { Dealt = 0, Taken = 0 },
+    
+    -- Переменные для HUD
+    FPS = 60,
+    Frames = 0,
+    Time = 0,
+    RainbowHue = 0
 }
 
 local ESPObjects = {}
@@ -57,7 +63,7 @@ local DamagePopups = {}
 local Connections = {}
 
 -- ============================================================================
--- FULLBRIGHT (СВЕТ)
+-- FULLBRIGHT (БЕЗ МЕРЦАНИЯ)
 -- ============================================================================
 local function ApplyLighting()
     if not Config.Fullbright or State.Unloaded then return end
@@ -75,41 +81,93 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- UI ФРЕЙМВОРК + HUD (СЧЕТЧИК УРОНА)
+-- UI ФРЕЙМВОРК + HUD
 -- ============================================================================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "OmnixUI"
+ScreenGui.Name = "pisunRustUI"
 ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui")
 ScreenGui.ResetOnSpawn = false
 
--- HUD (Снизу экрана)
-local HUD = Instance.new("Frame")
-HUD.Size = UDim2.new(0, 300, 0, 40)
-HUD.Position = UDim2.new(0.5, -150, 1, -60)
-HUD.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-HUD.BackgroundTransparency = 0.2
-HUD.BorderSizePixel = 0
-HUD.Parent = ScreenGui
+-- ================= РАДУЖНЫЙ HUD (СВЕРХУ СЛЕВА) =================
+local TopHUD = Instance.new("Frame")
+TopHUD.Size = UDim2.new(0, 220, 0, 85)
+TopHUD.Position = UDim2.new(0, 20, 0, 20)
+TopHUD.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+TopHUD.BackgroundTransparency = 0.4
+TopHUD.BorderSizePixel = 0
+TopHUD.Parent = ScreenGui
 
-local HUDCorner = Instance.new("UICorner")
-HUDCorner.CornerRadius = UDim.new(0, 8)
-HUDCorner.Parent = HUD
+local TopHUDCorner = Instance.new("UICorner")
+TopHUDCorner.CornerRadius = UDim.new(0, 6)
+TopHUDCorner.Parent = TopHUD
 
-local HUDStroke = Instance.new("UIStroke")
-HUDStroke.Color = Color3.fromRGB(50, 50, 65)
-HUDStroke.Thickness = 1
-HUDStroke.Parent = HUD
+local TopHUDStroke = Instance.new("UIStroke")
+TopHUDStroke.Color = Color3.fromRGB(50, 50, 65)
+TopHUDStroke.Thickness = 1
+TopHUDStroke.Parent = TopHUD
 
-local HUDText = Instance.new("TextLabel")
-HUDText.Size = UDim2.new(1, 0, 1, 0)
-HUDText.BackgroundTransparency = 1
-HUDText.Text = "Dealt: 0  |  Taken: 0"
-HUDText.TextColor3 = Color3.fromRGB(255, 255, 255)
-HUDText.Font = Enum.Font.GothamBold
-HUDText.TextSize = 16
-HUDText.Parent = HUD
+-- Название чита
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, -10, 0, 25)
+TitleLabel.Position = UDim2.new(0, 5, 0, 5)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "pisunRust | Beta"
+TitleLabel.Font = Enum.Font.GothamBlack
+TitleLabel.TextSize = 18
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TopHUD
 
--- Главное меню
+-- FPS
+local FPSLabel = Instance.new("TextLabel")
+FPSLabel.Size = UDim2.new(1, -10, 0, 20)
+FPSLabel.Position = UDim2.new(0, 5, 0, 25)
+FPSLabel.BackgroundTransparency = 1
+FPSLabel.Text = "FPS: 60"
+FPSLabel.Font = Enum.Font.GothamBold
+FPSLabel.TextSize = 14
+FPSLabel.TextXAlignment = Enum.TextXAlignment.Left
+FPSLabel.Parent = TopHUD
+
+-- Список активных функций
+local FeaturesLabel = Instance.new("TextLabel")
+FeaturesLabel.Size = UDim2.new(1, -10, 0, 35)
+FeaturesLabel.Position = UDim2.new(0, 5, 0, 45)
+FeaturesLabel.BackgroundTransparency = 1
+FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nChams: ON | Light: ON"
+FeaturesLabel.Font = Enum.Font.GothamSemibold
+FeaturesLabel.TextSize = 12
+FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left
+FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top
+FeaturesLabel.Parent = TopHUD
+
+-- ================= HUD УРОНА (СНИЗУ) =================
+local BottomHUD = Instance.new("Frame")
+BottomHUD.Size = UDim2.new(0, 300, 0, 40)
+BottomHUD.Position = UDim2.new(0.5, -150, 1, -60)
+BottomHUD.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+BottomHUD.BackgroundTransparency = 0.2
+BottomHUD.BorderSizePixel = 0
+BottomHUD.Parent = ScreenGui
+
+local BottomHUDCorner = Instance.new("UICorner")
+BottomHUDCorner.CornerRadius = UDim.new(0, 8)
+BottomHUDCorner.Parent = BottomHUD
+
+local BottomHUDStroke = Instance.new("UIStroke")
+BottomHUDStroke.Color = Color3.fromRGB(50, 50, 65)
+BottomHUDStroke.Thickness = 1
+BottomHUDStroke.Parent = BottomHUD
+
+local BottomHUDText = Instance.new("TextLabel")
+BottomHUDText.Size = UDim2.new(1, 0, 1, 0)
+BottomHUDText.BackgroundTransparency = 1
+BottomHUDText.Text = "Dealt: 0  |  Taken: 0"
+BottomHUDText.TextColor3 = Color3.fromRGB(255, 255, 255)
+BottomHUDText.Font = Enum.Font.GothamBold
+BottomHUDText.TextSize = 16
+BottomHUDText.Parent = BottomHUD
+
+-- ================= ГЛАВНОЕ МЕНЮ =================
 local Main = Instance.new("Frame")
 Main.Size = UDim2.new(0, 520, 0, 400)
 Main.Position = UDim2.new(0.5, -260, 0.5, -200)
@@ -141,7 +199,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "OMNIX CHEAT | V18 HUD"
+Title.Text = "pisunRust | Menu"
 Title.TextColor3 = Color3.fromRGB(230, 230, 250)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -269,19 +327,14 @@ Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Pages["Aimbot"].Visible = true
 
 -- ============================================================================
--- СИСТЕМА ПОЛНОГО ВЫКЛЮЧЕНИЯ (UNLOAD) И ОЧИСТКИ
+-- СИСТЕМА ПОЛНОГО ВЫКЛЮЧЕНИЯ (UNLOAD)
 -- ============================================================================
 local function FullCleanup()
     State.Unloaded = true
-    
-    -- Отключаем все циклы
     for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
     Connections = {}
-    
-    -- Удаляем GUI
     if ScreenGui then pcall(function() ScreenGui:Destroy() end) end
     
-    -- Удаляем Drawing объекты
     pcall(function() FOVCircle:Remove() end)
     for p, esp in pairs(ESPObjects) do
         pcall(function()
@@ -291,18 +344,12 @@ local function FullCleanup()
     end
     ESPObjects = {}
     
-    -- Удаляем Chams
     for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
     ChamsObjects = {}
-    
-    -- Удаляем цифры урона
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     DamagePopups = {}
     
-    -- Отпускаем Shift
     pcall(function() keyrelease(Enum.KeyCode.LeftShift) end)
-    
-    -- Возвращаем свет
     pcall(function()
         Lighting.ClockTime = 14
         Lighting.Brightness = 1
@@ -311,26 +358,20 @@ local function FullCleanup()
         Lighting.GlobalShadows = true
         Lighting.FogEnd = 1000
     end)
-    
-    print("[OMNIX] Cheat successfully unloaded. All clean.")
+    print("[pisunRust] Cheat successfully unloaded. All clean.")
 end
 
--- Кнопка выключения в меню
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
--- СИСТЕМА УРОНА (DAMAGE NUMBERS & HUD)
+-- СИСТЕМА УРОНА (DAMAGE NUMBERS & STATS)
 -- ============================================================================
 local function SpawnDamageNumber(position, damage, isTaken)
     if not Config.DamageNumbers or State.Unloaded then return end
     local text = Drawing.new("Text")
     text.Text = (isTaken and "+" or "-") .. tostring(math.floor(damage))
-    text.Color = isTaken and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(50, 255, 50) -- Красный если получили, зеленый если нанесли
-    text.Size = 20
-    text.Center = true
-    text.Outline = true
-    text.OutlineColor = Color3.fromRGB(0, 0, 0)
-    text.Transparency = 1
+    text.Color = isTaken and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(50, 255, 50)
+    text.Size = 20; text.Center = true; text.Outline = true; text.OutlineColor = Color3.fromRGB(0, 0, 0); text.Transparency = 1
     
     local screenPos, onScreen = Camera:WorldToViewportPoint(position)
     if onScreen then
@@ -341,10 +382,8 @@ local function SpawnDamageNumber(position, damage, isTaken)
     end
 end
 
--- Подключаем отслеживание здоровья
 local function TrackPlayer(p)
     if p == LocalPlayer then
-        -- Отслеживаем СВОЙ урон (Полученный)
         local function setupMyChar(char)
             local hum = char:WaitForChild("Humanoid", 5)
             if hum then
@@ -365,7 +404,6 @@ local function TrackPlayer(p)
         return
     end
 
-    -- Отслеживаем урон ВРАГОВ (Нанесенный)
     local function setupChar(char)
         local hum = char:WaitForChild("Humanoid", 5)
         if hum then
@@ -373,11 +411,9 @@ local function TrackPlayer(p)
                 local oldHealth = hum:GetAttribute("LastHealth") or newHealth
                 if newHealth < oldHealth then
                     local dmg = oldHealth - newHealth
-                    State.Stats.Dealt = State.Stats.Dealt + dmg -- Плюсуем в статистику
+                    State.Stats.Dealt = State.Stats.Dealt + dmg
                     local head = char:FindFirstChild("Head")
-                    if head and dmg > 0 then
-                        SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false)
-                    end
+                    if head and dmg > 0 then SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false) end
                 end
                 hum:SetAttribute("LastHealth", newHealth)
             end)
@@ -391,7 +427,7 @@ for _, p in pairs(Players:GetPlayers()) do TrackPlayer(p) end
 Players.PlayerAdded:Connect(TrackPlayer)
 
 -- ============================================================================
--- УМНЫЙ И КРАСИВЫЙ ESP (БЕЗ БАГОВ)
+-- УМНЫЙ ESP
 -- ============================================================================
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 2; FOVCircle.NumSides = 100; FOVCircle.Radius = Config.FOV; FOVCircle.Color = Color3.fromRGB(80, 120, 255); FOVCircle.Filled = false; FOVCircle.Visible = false
@@ -425,7 +461,6 @@ local function CleanupESP(p)
     end
 end
 
--- Очистка при выходе игрока
 Players.PlayerRemoving:Connect(function(p)
     CleanupESP(p)
     if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end
@@ -441,18 +476,13 @@ local function UpdateESP()
         return
     end
 
-    -- Автоматическая очистка мертвых/вышедших
     for p, _ in pairs(ESPObjects) do
-        if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
-            CleanupESP(p)
-        end
+        if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then CleanupESP(p) end
     end
 
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("Head") then
-            local hum = p.Character.Humanoid
-            local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-            local head = p.Character:FindFirstChild("Head")
+            local hum = p.Character.Humanoid; local hrp = p.Character:FindFirstChild("HumanoidRootPart"); local head = p.Character:FindFirstChild("Head")
 
             if hum.Health > 0 and hrp and head then
                 local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -518,22 +548,19 @@ local function UpdateESP()
 end
 
 -- ============================================================================
--- AIMBOT ЛОГИКА
+-- AIMBOT
 -- ============================================================================
 local function GetTarget()
     if State.Unloaded or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then return nil end
-    
     local closest = nil; local shortestDist = Config.FOV
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") then
             local hum = p.Character.Humanoid; local hrp = p.Character:FindFirstChild("HumanoidRootPart"); local head = p.Character:FindFirstChild("Head")
-
             if hum.Health > 0 and hrp and head then
                 local targetPos = head.Position
                 local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
-
                 if onScreen and screenPos.Z > 0 then
                     local dist = (screenCenter - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
                     if dist < shortestDist then
@@ -551,7 +578,7 @@ local function GetTarget()
 end
 
 -- ============================================================================
--- ВВОД И ГЛАВНЫЕ ЦИКЛЫ
+-- ВВОД И ЦИКЛЫ
 -- ============================================================================
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if State.Unloaded then return end
@@ -578,21 +605,48 @@ table.insert(Connections, UserInputService.InputEnded:Connect(function(input, ga
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = false end
 end))
 
-table.insert(Connections, RunService.RenderStepped:Connect(function()
+table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
 
     ApplyLighting()
     
-    -- Обновление HUD (Счетчик урона)
-    HUDText.Text = string.format("Dealt: %d  |  Taken: %d", math.floor(State.Stats.Dealt), math.floor(State.Stats.Taken))
+    -- ================= РАСЧЕТ FPS =================
+    State.Frames = State.Frames + 1
+    State.Time = State.Time + deltaTime
+    if State.Time >= 1 then
+        State.FPS = math.floor(State.Frames / State.Time)
+        State.Frames = 0
+        State.Time = 0
+    end
 
+    -- ================= РАДУЖНЫЙ HUD =================
+    State.RainbowHue = (State.RainbowHue + 0.005) % 1
+    local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
+    
+    TitleLabel.TextColor3 = RainbowColor
+    FPSLabel.Text = "FPS: " .. State.FPS
+    FPSLabel.TextColor3 = RainbowColor
+    FeaturesLabel.TextColor3 = RainbowColor
+    
+    -- Обновляем список функций
+    local featuresText = string.format("Aimbot: %s | ESP: %s\nChams: %s | Light: %s", 
+        Config.AimbotEnabled and "ON" or "OFF",
+        Config.ESPEnabled and "ON" or "OFF",
+        Config.ChamsEnabled and "ON" or "OFF",
+        Config.Fullbright and "ON" or "OFF"
+    )
+    FeaturesLabel.Text = featuresText
+
+    -- ================= НИЖНИЙ HUD УРОНА =================
+    BottomHUDText.Text = string.format("Dealt: %d  |  Taken: %d", math.floor(State.Stats.Dealt), math.floor(State.Stats.Taken))
+
+    -- ================= ОСТАЛЬНАЯ ЛОГИКА =================
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Config.FOV
     FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
 
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
 
-    -- Damage Popups
     for i = #DamagePopups, 1, -1 do
         local popup = DamagePopups[i]
         popup.Life = popup.Life - 0.02
@@ -625,4 +679,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[OMNIX] V18 Loaded. Bottom HUD active. Ultimate Cleanup ready.")
+print("[pisunRust] V19 Loaded. Rainbow HUD & FPS Counter active.")
