@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V35 - RAINBOW CHAMS)
+    pisunRust v2 - OMNIX FRAMEWORK (V36 - CLEAN CHAMS)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -43,10 +43,10 @@ local Config = {
     OptParticles = false,    
     OptGraphics = false,     
     
-    -- НОВЫЕ ЧАМСЫ
+    -- ЧАМСЫ
     HandChamsEnabled = false,
     ItemChamsEnabled = false,
-    RainbowChams = false,    -- Радужный цвет
+    RainbowChams = false,
     
     AutoSprint = false,
     Fullbright = true,
@@ -112,7 +112,7 @@ local function ApplyChamsColor(highlight)
         highlight.FillColor = color
         highlight.OutlineColor = color
     else
-        highlight.FillColor = Color3.fromRGB(0, 150, 255) -- Синий по умолчанию
+        highlight.FillColor = Color3.fromRGB(0, 150, 255)
         highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
     end
 end
@@ -141,7 +141,6 @@ end
 local function UpdateItemChams()
     if State.Unloaded then return end
     
-    -- Очистка старых и вышедших за радиус
     for item, chams in pairs(ItemChamsObjects) do
         if not item or not item.Parent or not Config.ItemChamsEnabled then
             chams:Destroy()
@@ -155,7 +154,6 @@ local function UpdateItemChams()
         end
     end
 
-    -- Поиск новых (только в радиусе 100 метров)
     if Config.ItemChamsEnabled then
         local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not myRoot then return end
@@ -177,7 +175,6 @@ local function UpdateItemChams()
         end
     end
     
-    -- Обновление цвета
     for _, chams in pairs(ItemChamsObjects) do
         ApplyChamsColor(chams)
     end
@@ -472,7 +469,7 @@ CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 270, fun
 CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 315, function(v) Config.DamageNumbers = v end)
 CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 350, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
 
--- CHAMS TAB (НОВОЕ)
+-- CHAMS TAB
 CreateToggle(PageChams, "Hands Chams (Руки)", Config.HandChamsEnabled, 0, function(v) Config.HandChamsEnabled = v end)
 CreateToggle(PageChams, "Item Chams (Предметы)", Config.ItemChamsEnabled, 35, function(v) Config.ItemChamsEnabled = v end)
 CreateToggle(PageChams, "Rainbow Color (Радуга)", Config.RainbowChams, 70, function(v) Config.RainbowChams = v end)
@@ -702,4 +699,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V35 Loaded. Rainbow Chams active.")
+print("[pisunRust v2] V36 Loaded. Pure Chams Edition (No Cosmetics).")
