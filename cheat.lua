@@ -1,5 +1,5 @@
 --[[
-    pisunRust - OMNIX FRAMEWORK (V19 - RAINBOW HUD & FPS)
+    pisunRust v2 - OMNIX FRAMEWORK (V20 - RAINBOW HUD & FPS)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -84,7 +84,7 @@ end
 -- UI ФРЕЙМВОРК + HUD
 -- ============================================================================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "pisunRustUI"
+ScreenGui.Name = "pisunRustUI_v2"
 ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui")
 ScreenGui.ResetOnSpawn = false
 
@@ -111,7 +111,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -10, 0, 25)
 TitleLabel.Position = UDim2.new(0, 5, 0, 5)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "pisunRust | Beta"
+TitleLabel.Text = "pisunRust v2"
 TitleLabel.Font = Enum.Font.GothamBlack
 TitleLabel.TextSize = 18
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -199,7 +199,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "pisunRust | Menu"
+Title.Text = "pisunRust v2 | Menu"
 Title.TextColor3 = Color3.fromRGB(230, 230, 250)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -358,7 +358,7 @@ local function FullCleanup()
         Lighting.GlobalShadows = true
         Lighting.FogEnd = 1000
     end)
-    print("[pisunRust] Cheat successfully unloaded. All clean.")
+    print("[pisunRust v2] Cheat successfully unloaded. All clean.")
 end
 
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, FullCleanup, Color3.fromRGB(150, 30, 30))
@@ -628,7 +628,6 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     FPSLabel.TextColor3 = RainbowColor
     FeaturesLabel.TextColor3 = RainbowColor
     
-    -- Обновляем список функций
     local featuresText = string.format("Aimbot: %s | ESP: %s\nChams: %s | Light: %s", 
         Config.AimbotEnabled and "ON" or "OFF",
         Config.ESPEnabled and "ON" or "OFF",
@@ -679,4 +678,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust] V19 Loaded. Rainbow HUD & FPS Counter active.")
+print("[pisunRust v2] Loaded. Rainbow HUD & FPS Counter active.")
