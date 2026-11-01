@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V31 - NOCLIP & FLY)
+    pisunRust v2 - OMNIX FRAMEWORK (V32 - JUMP POWER)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -43,7 +43,9 @@ local Config = {
     OptParticles = false,    
     OptGraphics = false,     
     
-    FlySpeed = 50,           -- НОВОЕ: Скорость полета
+    -- НОВОЕ: Прыжок
+    JumpPowerEnabled = false,
+    JumpPowerValue = 50,     -- Стандарт 50, макс 500
     
     AutoSprint = false,
     Fullbright = true,
@@ -55,9 +57,7 @@ local Binds = {
     Aimbot = Enum.UserInputType.MouseButton2,
     ESP = Enum.KeyCode.E,
     Chams = Enum.KeyCode.C,
-    Sprint = Enum.KeyCode.Z,
-    Noclip = Enum.KeyCode.N,  -- НОВОЕ: Бинд на Noclip
-    Fly = Enum.KeyCode.F      -- НОВОЕ: Бинд на Fly
+    Sprint = Enum.KeyCode.Z
 }
 
 local State = {
@@ -69,11 +69,7 @@ local State = {
     FPS = 60,
     Frames = 0,
     Time = 0,
-    RainbowHue = 0,
-    
-    NoclipEnabled = false,    -- Состояние Noclip
-    FlyEnabled = false,       -- Состояние Fly
-    FlyBV = nil               -- BodyVelocity для полета
+    RainbowHue = 0
 }
 
 local ESPObjects = {}
@@ -299,7 +295,7 @@ local function AddNotification(amount)
     end)
 end
 
--- Main Menu (Высота 520)
+-- Main Menu
 local Main = Instance.new("Frame"); Main.Size = UDim2.new(0, 520, 0, 520); Main.Position = UDim2.new(0.5, -260, 0.5, -260); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0, 8); MainCorner.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(45, 45, 60); MainStroke.Thickness = 2; MainStroke.Parent = Main
@@ -372,7 +368,7 @@ local function CreateButton(parent, text, posY, callback, color)
     return btn
 end
 
--- Aimbot Tab (БЕЗ REACH)
+-- Aimbot Tab
 CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, 0, function(v) Config.AimbotEnabled = v end)
 CreateToggle(PageAimbot, "Visible Aim", Config.VisibleAim, 35, function(v) Config.VisibleAim = v end)
 CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 70, function(v) Config.FOV = v end)
@@ -396,13 +392,16 @@ CreateToggle(PageOptimizer, "Shakal Textures (Текстуры)", Config.OptText
 CreateToggle(PageOptimizer, "Remove Particles (Частицы)", Config.OptParticles, 35, function(v) Config.OptParticles = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Enabled ~= nil then pcall(function() obj.Enabled = props.Enabled end) end end end end)
 CreateToggle(PageOptimizer, "Flat Graphics (Тени/Материалы)", Config.OptGraphics, 70, function(v) Config.OptGraphics = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Material ~= nil then pcall(function() obj.Material = props.Material; obj.CastShadow = props.CastShadow end) end end end end)
 
--- Misc Tab (Добавлен ползунок скорости полета)
+-- Misc Tab (Добавлен Jump Power)
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
 CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
-CreateSlider(PageMisc, "Fly Speed", 10, 200, Config.FlySpeed, 70, function(v) Config.FlySpeed = v end)
-CreateSlider(PageMisc, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 120, function(v) Config.ESPMaxDist = v end)
+CreateSlider(PageMisc, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, function(v) Config.ESPMaxDist = v end)
 
--- Binds Tab (Добавлены бинды для Noclip и Fly)
+-- НОВОЕ: Прыжок
+CreateToggle(PageMisc, "High Jump (Прыжок)", Config.JumpPowerEnabled, 120, function(v) Config.JumpPowerEnabled = v end)
+CreateSlider(PageMisc, "Jump Power (50-500)", 50, 500, Config.JumpPowerValue, 155, function(v) Config.JumpPowerValue = v end)
+
+-- Binds Tab
 local bindBtns = {}
 local function CreateBindButton(parent, text, bindName, posY)
     local btn = CreateButton(parent, text .. ": " .. tostring(Binds[bindName]):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", ""), posY, function() State.WaitingForKey = bindName; btn.Text = "Нажми клавишу..."; btn.TextColor3 = Color3.fromRGB(255, 100, 100) end)
@@ -411,13 +410,11 @@ end
 CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
 CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
 CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
-CreateBindButton(PageBinds, "Noclip Key", "Noclip", 120) -- НОВОЕ
-CreateBindButton(PageBinds, "Fly Key", "Fly", 160)       -- НОВОЕ
 
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
 
 -- ============================================================================
--- UNLOAD (СБРОС ВСЕХ НАСТРОЕК И ВОССТАНОВЛЕНИЕ)
+-- UNLOAD
 -- ============================================================================
 local function FullCleanup()
     State.Unloaded = true
@@ -437,16 +434,9 @@ local function FullCleanup()
     for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end
     OriginalHeadSizes = {}
     
-    -- Восстановление Noclip
-    if LocalPlayer.Character then
-        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
-            if v:IsA("BasePart") then pcall(function() v.CanCollide = true end) end
-        end
-    end
-    -- Восстановление Fly
-    if State.FlyBV then pcall(function() State.FlyBV:Destroy() end); State.FlyBV = nil end
+    -- Сброс прыжка
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        pcall(function() LocalPlayer.Character.Humanoid.PlatformStand = false end)
+        pcall(function() LocalPlayer.Character.Humanoid.JumpPower = 50 end)
     end
     
     RestoreOptimization() 
@@ -455,7 +445,7 @@ local function FullCleanup()
     pcall(function() Lighting.ClockTime = 14; Lighting.Brightness = 1; Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128); Lighting.GlobalShadows = true; Lighting.FogEnd = 1000 end)
     print("[pisunRust v2] Unloaded. Everything restored.")
 end
-CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 170, FullCleanup, Color3.fromRGB(150, 30, 30))
+CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 205, FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
 -- СИСТЕМА УРОНА
@@ -584,31 +574,10 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
     if input.KeyCode == Config.MenuKey then State.MenuOpen = not State.MenuOpen; Main.Visible = State.MenuOpen; return end
     if State.WaitingForKey then local keyName = ""; if input.UserInputType == Enum.UserInputType.Keyboard then Binds[State.WaitingForKey] = input.KeyCode; keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "") else Binds[State.WaitingForKey] = input.UserInputType; keyName = tostring(input.UserInputType):gsub("Enum.UserInputType.", "") end; bindBtns[State.WaitingForKey].Text = State.WaitingForKey .. ": " .. keyName; bindBtns[State.WaitingForKey].TextColor3 = Color3.fromRGB(200, 200, 220); State.WaitingForKey = nil; return end
     if gameProcessed then return end
-    
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = true
     elseif input.UserInputType == Binds.ESP or input.KeyCode == Binds.ESP then Config.ESPEnabled = not Config.ESPEnabled
     elseif input.UserInputType == Binds.Chams or input.KeyCode == Binds.Chams then Config.ChamsEnabled = not Config.ChamsEnabled
-    elseif input.UserInputType == Binds.Sprint or input.KeyCode == Binds.Sprint then Config.AutoSprint = not Config.AutoSprint 
-    
-    -- NOCLIP БИНД
-    elseif input.UserInputType == Binds.Noclip or input.KeyCode == Binds.Noclip then 
-        State.NoclipEnabled = not State.NoclipEnabled
-        if not State.NoclipEnabled and LocalPlayer.Character then
-            for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
-                if v:IsA("BasePart") then v.CanCollide = true end
-            end
-        end
-        
-    -- FLY БИНД
-    elseif input.UserInputType == Binds.Fly or input.KeyCode == Binds.Fly then 
-        State.FlyEnabled = not State.FlyEnabled
-        if not State.FlyEnabled then
-            if State.FlyBV then pcall(function() State.FlyBV:Destroy() end); State.FlyBV = nil end
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-                pcall(function() LocalPlayer.Character.Humanoid.PlatformStand = false end)
-            end
-        end
-    end
+    elseif input.UserInputType == Binds.Sprint or input.KeyCode == Binds.Sprint then Config.AutoSprint = not Config.AutoSprint end
 end))
 
 table.insert(Connections, UserInputService.InputEnded:Connect(function(input, gameProcessed)
@@ -621,45 +590,11 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
     
-    -- NOCLIP ЛОГИКА
-    if State.NoclipEnabled and LocalPlayer.Character then
-        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
-            if v:IsA("BasePart") and v.CanCollide then v.CanCollide = false end
-        end
-    end
-    
-    -- FLY ЛОГИКА
-    if State.FlyEnabled then
-        local char = LocalPlayer.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hrp and hum then
-                hum.PlatformStand = true
-                if not State.FlyBV then
-                    State.FlyBV = Instance.new("BodyVelocity")
-                    State.FlyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                    State.FlyBV.Parent = hrp
-                end
-                
-                local moveDir = Vector3.new(0,0,0)
-                local camCFrame = Camera.CFrame
-                
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camCFrame.LookVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camCFrame.LookVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - camCFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + camCFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,1,0) end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0,1,0) end
-                
-                if moveDir.Magnitude > 0 then moveDir = moveDir.Unit end
-                State.FlyBV.Velocity = moveDir * Config.FlySpeed
-            end
-        end
-    else
-        if State.FlyBV then State.FlyBV:Destroy(); State.FlyBV = nil end
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-            if LocalPlayer.Character.Humanoid.PlatformStand then LocalPlayer.Character.Humanoid.PlatformStand = false end
+    -- Прыжок
+    if Config.JumpPowerEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum.JumpPower ~= Config.JumpPowerValue then
+            pcall(function() hum.JumpPower = Config.JumpPowerValue end)
         end
     end
     
@@ -668,7 +603,7 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nNoclip: %s | Fly: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", State.NoclipEnabled and "ON" or "OFF", State.FlyEnabled and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nJump: %s | Light: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.JumpPowerEnabled and "ON" or "OFF", Config.Fullbright and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
@@ -687,4 +622,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V31 Loaded. Noclip & Fly active.")
+print("[pisunRust v2] V32 Loaded. Jump Power active.")
