@@ -1,7 +1,6 @@
 --[[
-    RUST CLONE CHEAT - OMNIX FRAMEWORK (V11 - STABLE)
+    RUST CLONE CHEAT - OMNIX FRAMEWORK (V12 - FULLBRIGHT & DEATH FIX)
     Меню: RightShift (Правый Shift)
-    Полностью исправленный и рабочий билд.
 ]]
 
 local Players = game:GetService("Players")
@@ -9,6 +8,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -18,7 +18,7 @@ local Camera = workspace.CurrentCamera
 -- ============================================================================
 local Config = {
     AimbotEnabled = true,
-    AimbotMethod = "Camera", -- "Camera" (безопасно) или "Mouse" (если камера не работает)
+    AimbotMethod = "Camera", 
     FOV = 150,
     Smoothness = 0.25,
     VisibleAim = true,
@@ -29,6 +29,7 @@ local Config = {
     ChamsEnabled = true,
     
     AutoSprint = false,
+    Fullbright = true,
     MenuKey = Enum.KeyCode.RightShift
 }
 
@@ -48,6 +49,30 @@ local State = {
 
 local ESPObjects = {}
 local ChamsObjects = {}
+
+-- ============================================================================
+-- ФУНКЦИЯ FULLBRIGHT (ВСЕГДА СВЕТЛО)
+-- ============================================================================
+local function ApplyFullbright()
+    if Config.Fullbright then
+        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 12
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 0
+        Lighting.EnvironmentDiffuseScale = 1
+        Lighting.EnvironmentSpecularScale = 1
+    else
+        Lighting.Ambient = Color3.fromRGB(70, 70, 70)
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        Lighting.Brightness = 1
+        Lighting.GlobalShadows = true
+        Lighting.FogEnd = 1000
+    end
+end
+ApplyFullbright() -- Применяем при запуске
 
 -- ============================================================================
 -- UI ФРЕЙМВОРК
@@ -88,7 +113,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "OMNIX CHEAT | FUST BYPASS"
+Title.Text = "OMNIX CHEAT | FIXED ESP & LIGHT"
 Title.TextColor3 = Color3.fromRGB(230, 230, 250)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -109,7 +134,7 @@ ContentContainer.Parent = Main
 
 local Tabs = {}
 local Pages = {}
-local tabY = 8 -- Используем фиксированную переменную для Y-координаты вкладок
+local tabY = 8 
 
 local function CreateTab(name)
     local btn = Instance.new("TextButton")
@@ -135,7 +160,7 @@ local function CreateTab(name)
     
     Tabs[name] = btn
     Pages[name] = page
-    tabY = tabY + 40 -- Сдвигаем следующую вкладку вниз
+    tabY = tabY + 40 
     
     btn.MouseButton1Click:Connect(function()
         for tName, tBtn in pairs(Tabs) do
@@ -156,7 +181,6 @@ local PageVisuals = CreateTab("Visuals")
 local PageBinds = CreateTab("Binds")
 local PageMisc = CreateTab("Misc")
 
--- Функции UI
 local function CreateToggle(parent, text, default, posY, callback)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, 0, 0, 30)
@@ -270,7 +294,6 @@ local function CreateButton(parent, text, posY, callback)
     return btn
 end
 
--- Заполнение
 CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, 0, function(v) Config.AimbotEnabled = v end)
 CreateToggle(PageAimbot, "Visible Aim (Только видимых)", Config.VisibleAim, 35, function(v) Config.VisibleAim = v end)
 CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 70, function(v) Config.FOV = v end)
@@ -286,6 +309,7 @@ CreateToggle(PageVisuals, "Chams (Подсветка)", Config.ChamsEnabled, 35,
 CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
+CreateToggle(PageMisc, "Fullbright (Всегда светло)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyFullbright() end)
 
 local bindBtns = {}
 local function CreateBindButton(parent, text, bindName, posY)
@@ -301,7 +325,6 @@ CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
 CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
 CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
 
--- Включаем вкладку Aimbot вручную (без ошибки Fire)
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75)
 Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255)
 Pages["Aimbot"].Visible = true
@@ -337,6 +360,14 @@ local function CreateESPObject()
 end
 
 local function UpdateESP()
+    -- КРИТИЧЕСКИЙ ФИКС: Если мы мертвы, выключаем ESP и не рисуем дистанции
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then
+        for p, esp in pairs(ESPObjects) do
+            esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false
+        end
+        return
+    end
+
     for p, esp in pairs(ESPObjects) do
         if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
             esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove(); ESPObjects[p] = nil
@@ -396,6 +427,8 @@ local function UpdateESP()
 end
 
 local function GetTarget()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then return nil end
+    
     local closest = nil
     local shortestDist = Config.FOV
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
@@ -407,7 +440,7 @@ local function GetTarget()
             local head = p.Character:FindFirstChild("Head")
 
             if hum.Health > 0 and hrp and head then
-                local targetPos = head.Position -- Всегда целимся в голову для надежности
+                local targetPos = head.Position
                 local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
 
                 if onScreen and screenPos.Z > 0 then
@@ -460,7 +493,7 @@ end)
 RunService.RenderStepped:Connect(function()
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Config.FOV
-    FOVCircle.Visible = Config.AimbotEnabled
+    FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
 
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
 
@@ -487,4 +520,4 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-print("[OMNIX] Скрипт успешно запущен!")
+print("[OMNIX] Скрипт обновлен. ESP и Fullbright готовы!")
