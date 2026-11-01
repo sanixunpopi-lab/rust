@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V26 - WALL X-RAY)
+    pisunRust v2 - OMNIX FRAMEWORK (V27 - X-RAY DISTANCE)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -31,8 +31,9 @@ local Config = {
     DamageNumbers = true,
     ShowDamageLog = true,
     
-    XRayEnabled = false,     -- НОВОЕ: Рентген стен
-    XRayValue = 50,          -- НОВОЕ: Прозрачность (0-100)
+    XRayEnabled = false,
+    XRayValue = 50,          -- Прозрачность (0-100)
+    XRayDistance = 500,      -- НОВОЕ: Радиус рентгена (100-1500)
     
     AutoSprint = false,
     Fullbright = true,
@@ -64,7 +65,7 @@ local ChamsObjects = {}
 local DamagePopups = {}
 local ActiveNotifications = {}
 local Connections = {}
-local OriginalTransparencies = {} -- Для хранения изначальной прозрачности стен
+local OriginalTransparencies = {}
 
 -- ============================================================================
 -- FULLBRIGHT
@@ -85,62 +86,64 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- СИСТЕМА X-RAY (ПРОСВЕЧИВАНИЕ СТЕН)
+-- СИСТЕМА X-RAY (С РАДИУСОМ ДИСТАНЦИИ)
 -- ============================================================================
 local function ApplyXRay()
     if State.Unloaded then return end
     
     if Config.XRayEnabled then
-        local targetModifier = 1 - (Config.XRayValue / 100) -- 100 -> 0 (прозрачный), 0 -> 1 (непрозрачный)
+        local targetModifier = 1 - (Config.XRayValue / 100)
+        local myPos = Camera.CFrame.Position
         
         for _, obj in pairs(workspace:GetDescendants()) do
             if obj:IsA("BasePart") then
-                -- Проверяем, чтобы это не был игрок, оружие или местный персонаж
+                -- Проверяем, не является ли объект игроком или оружием
                 local isCharacter = false
                 local parent = obj.Parent
                 while parent do
-                    if parent:IsA("Model") and parent:FindFirstChildOfClass("Humanoid") then
-                        isCharacter = true
-                        break
-                    end
-                    if parent:IsA("Tool") or parent:IsA("Accessory") then
-                        isCharacter = true
-                        break
-                    end
+                    if parent:IsA("Model") and parent:FindFirstChildOfClass("Humanoid") then isCharacter = true; break end
+                    if parent:IsA("Tool") or parent:IsA("Accessory") then isCharacter = true; break end
                     parent = parent.Parent
                 end
                 
-                -- Если это не персонаж и не оружие, делаем прозрачным
                 if not isCharacter then
-                    if not OriginalTransparencies[obj] then
-                        OriginalTransparencies[obj] = obj.LocalTransparencyModifier
+                    -- Проверяем дистанцию до объекта
+                    local dist = (obj.Position - myPos).Magnitude
+                    
+                    if dist <= Config.XRayDistance then
+                        -- Объект в радиусе - делаем прозрачным
+                        if not OriginalTransparencies[obj] then
+                            OriginalTransparencies[obj] = obj.LocalTransparencyModifier
+                        end
+                        pcall(function() obj.LocalTransparencyModifier = targetModifier end)
+                    else
+                        -- Объект за радиусом - возвращаем как было
+                        if OriginalTransparencies[obj] then
+                            pcall(function() obj.LocalTransparencyModifier = OriginalTransparencies[obj] end)
+                            OriginalTransparencies[obj] = nil
+                        end
                     end
-                    pcall(function()
-                        obj.LocalTransparencyModifier = targetModifier
-                    end)
                 end
             end
         end
     else
-        -- Восстанавливаем стены, если выключили
+        -- Восстанавливаем всё, если выключили
         for obj, origMod in pairs(OriginalTransparencies) do
             if obj and obj.Parent then
-                pcall(function()
-                    obj.LocalTransparencyModifier = origMod
-                end)
+                pcall(function() obj.LocalTransparencyModifier = origMod end)
             end
         end
         OriginalTransparencies = {}
     end
 end
 
--- Запускаем обновление рентгена раз в секунду (чтобы не лагало)
+-- Запускаем обновление рентгена раз в 0.5 сек для оптимизации
 task.spawn(function()
     while not State.Unloaded do
         if Config.XRayEnabled then
             ApplyXRay()
         end
-        task.wait(1)
+        task.wait(0.5)
     end
 end)
 
@@ -265,9 +268,9 @@ local function AddNotification(amount)
     end)
 end
 
--- Главное меню
+-- Главное меню (Увеличено по высоте)
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 520, 0, 400); Main.Position = UDim2.new(0.5, -260, 0.5, -200); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
+Main.Size = UDim2.new(0, 520, 0, 460); Main.Position = UDim2.new(0.5, -260, 0.5, -230); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0, 8); MainCorner.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(45, 45, 60); MainStroke.Thickness = 2; MainStroke.Parent = Main
 
@@ -349,21 +352,30 @@ local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 17
     methodBtn.Text = "Method: " .. Config.AimbotMethod
 end)
 
--- ВКЛАДКА VISUALS (Обновлена под X-RAY)
+-- ВКЛАДКА VISUALS
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
 CreateToggle(PageVisuals, "Chams", Config.ChamsEnabled, 70, function(v) Config.ChamsEnabled = v end)
+
 CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, 105, function(v) 
     Config.XRayEnabled = v
     ApplyXRay()
 end)
+
 CreateSlider(PageVisuals, "Wall Transparency (0-100)", 0, 100, Config.XRayValue, 140, function(v) 
     Config.XRayValue = v 
     if Config.XRayEnabled then ApplyXRay() end
 end)
-CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 190, function(v) Config.DamageNumbers = v end)
-CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 225, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
-CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 260, function(v) Config.ESPMaxDist = v end)
+
+-- НОВЫЙ СЛАЙДЕР ДИСТАНЦИИ X-RAY
+CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, 190, function(v) 
+    Config.XRayDistance = v 
+    if Config.XRayEnabled then ApplyXRay() end
+end)
+
+CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 235, function(v) Config.DamageNumbers = v end)
+CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 270, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
+CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 305, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
 CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
@@ -382,7 +394,7 @@ CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
 
 -- ============================================================================
--- UNLOAD (СБРОС ВСЕХ НАСТРОЕК И ВОССТАНОВЛЕНИЕ СТЕН)
+-- UNLOAD
 -- ============================================================================
 local function FullCleanup()
     State.Unloaded = true
@@ -402,11 +414,8 @@ local function FullCleanup()
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     DamagePopups = {}
     
-    -- ВОССТАНАВЛИВАЕМ СТЕНЫ
     for obj, origMod in pairs(OriginalTransparencies) do
-        if obj and obj.Parent then
-            pcall(function() obj.LocalTransparencyModifier = origMod end)
-        end
+        if obj and obj.Parent then pcall(function() obj.LocalTransparencyModifier = origMod end) end
     end
     OriginalTransparencies = {}
     
@@ -421,7 +430,7 @@ end
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
--- СИСТЕМА УРОНА (ТОЛЬКО ТВОЙ УРОН)
+-- СИСТЕМА УРОНА
 -- ============================================================================
 local function SpawnDamageNumber(position, damage, isTaken)
     if not Config.DamageNumbers or State.Unloaded then return end
@@ -734,4 +743,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V26 Loaded. Wall X-Ray active.")
+print("[pisunRust v2] V27 Loaded. X-Ray distance active.")
