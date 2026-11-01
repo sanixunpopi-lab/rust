@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V39 - VISIBILITY CHAMS & SNAPLINES)
+    pisunRust v2 - OMNIX FRAMEWORK (V40 - ITEM ESP & FILTER)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -30,12 +30,15 @@ local Config = {
     DamageNumbers = true,
     ShowDamageLog = true,
     
-    -- ВИЗУАЛЫ И ЧАМСЫ
-    PlayerChamsEnabled = true, -- ВОЗВРАЩЕНО: Подсветка игроков
-    SnaplinesEnabled = true,
-    SnaplineOrigin = "Bottom", -- "Bottom" или "Center"
-    SnaplineHue = 0,           
+    -- ВИЗУАЛЫ
+    PlayerChamsEnabled = true, 
     ESPBoxHue = 0,             
+    
+    -- ITEM ESP (РЕНТГЕН НА ЛУТ)
+    ItemESPEnabled = true,
+    ItemESPMaxDist = 300,      -- Радиус поиска предметов
+    ItemESPFilter = "",        -- Фильтр (пусто = все)
+    ItemESPColorHue = 120,     -- Зеленый по умолчанию
     
     XRayEnabled = false,
     XRayValue = 50,          
@@ -75,6 +78,7 @@ local State = {
 
 local ESPObjects = {}
 local ChamsObjects = {}
+local ItemESPObjects = {} -- Для рентгена предметов
 local DamagePopups = {}
 local ActiveNotifications = {}
 local Connections = {}
@@ -97,6 +101,75 @@ local function ApplyLighting()
     for _, v in pairs(Lighting:GetChildren()) do
         if v:IsA("Atmosphere") then v.Density = 0; v.Haze = 0
         elseif v:IsA("Sky") then v.StarCount = 0 end
+    end
+end
+
+-- ============================================================================
+-- ITEM ESP (РЕНТГЕН НА ПРЕДМЕТЫ)
+-- ============================================================================
+local function UpdateItemESP()
+    if State.Unloaded then return end
+    
+    -- Очистка мертвых/далеких предметов
+    for item, hl in pairs(ItemESPObjects) do
+        if not item or not item.Parent or not Config.ItemESPEnabled then
+            hl:Destroy()
+            ItemESPObjects[item] = nil
+        else
+            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local itemPart = item:IsA("BasePart") and item or item:FindFirstChildWhichIsA("BasePart")
+            if myRoot and itemPart and (itemPart.Position - myRoot.Position).Magnitude > Config.ItemESPMaxDist then
+                hl:Destroy()
+                ItemESPObjects[item] = nil
+            end
+        end
+    end
+
+    if not Config.ItemESPEnabled then return end
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+
+    local filter = string.lower(Config.ItemESPFilter)
+    local itemColor = Color3.fromHSV(Config.ItemESPColorHue / 360, 1, 1)
+
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Tool") or obj:IsA("Model") then
+            local part = obj:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local dist = (part.Position - myRoot.Position).Magnitude
+                if dist <= Config.ItemESPMaxDist then
+                    local objName = string.lower(obj.Name)
+                    
+                    -- Проверка на стандартный лут или кастомный фильтр
+                    local isLoot = false
+                    if filter ~= "" then
+                        if string.find(objName, filter) then isLoot = true end
+                    else
+                        if string.find(objName, "crate") or string.find(objName, "box") or string.find(objName, "loot") or string.find(objName, "bag") or string.find(objName, "weapon") or string.find(objName, "tool") or obj:IsA("Tool") then
+                            isLoot = true
+                        end
+                    end
+
+                    if isLoot and not ItemESPObjects[obj] then
+                        local hl = Instance.new("Highlight")
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        hl.FillTransparency = 0.5
+                        hl.OutlineTransparency = 0
+                        hl.FillColor = itemColor
+                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        hl.Parent = obj
+                        ItemESPObjects[obj] = hl
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Обновление цвета, если изменили ползунок
+    for _, hl in pairs(ItemESPObjects) do
+        if hl and hl.Parent then
+            hl.FillColor = itemColor
+        end
     end
 end
 
@@ -176,7 +249,7 @@ local function UpdateHeadSize()
 end
 
 -- ============================================================================
--- СИСТЕМА X-RAY
+-- СИСТЕМА X-RAY (СТЕНЫ)
 -- ============================================================================
 local function ApplyXRay()
     if State.Unloaded then return end
@@ -219,7 +292,7 @@ task.spawn(function()
 end)
 
 -- ============================================================================
--- ОРУЖИЕ (ДЛЯ ESP)
+-- ОРУЖИЕ (ДЛЯ ESP ИГРОКОВ)
 -- ============================================================================
 local function GetWeaponName(character)
     local tool = character:FindFirstChildOfClass("Tool")
@@ -265,7 +338,7 @@ local TopHUDCorner = Instance.new("UICorner"); TopHUDCorner.CornerRadius = UDim.
 local TopHUDStroke = Instance.new("UIStroke"); TopHUDStroke.Color = Color3.fromRGB(50, 50, 65); TopHUDStroke.Thickness = 1; TopHUDStroke.Parent = TopHUD
 local TitleLabel = Instance.new("TextLabel"); TitleLabel.Size = UDim2.new(1, -10, 0, 25); TitleLabel.Position = UDim2.new(0, 5, 0, 5); TitleLabel.BackgroundTransparency = 1; TitleLabel.Text = "pisunRust v2"; TitleLabel.Font = Enum.Font.GothamBlack; TitleLabel.TextSize = 18; TitleLabel.TextXAlignment = Enum.TextXAlignment.Left; TitleLabel.Parent = TopHUD
 local FPSLabel = Instance.new("TextLabel"); FPSLabel.Size = UDim2.new(1, -10, 0, 20); FPSLabel.Position = UDim2.new(0, 5, 0, 25); FPSLabel.BackgroundTransparency = 1; FPSLabel.Text = "FPS: 60"; FPSLabel.Font = Enum.Font.GothamBold; FPSLabel.TextSize = 14; FPSLabel.TextXAlignment = Enum.TextXAlignment.Left; FPSLabel.Parent = TopHUD
-local FeaturesLabel = Instance.new("TextLabel"); FeaturesLabel.Size = UDim2.new(1, -10, 0, 35); FeaturesLabel.Position = UDim2.new(0, 5, 0, 45); FeaturesLabel.BackgroundTransparency = 1; FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nChams: ON | Light: ON"; FeaturesLabel.Font = Enum.Font.GothamSemibold; FeaturesLabel.TextSize = 12; FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left; FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top; FeaturesLabel.Parent = TopHUD
+local FeaturesLabel = Instance.new("TextLabel"); FeaturesLabel.Size = UDim2.new(1, -10, 0, 35); FeaturesLabel.Position = UDim2.new(0, 5, 0, 45); FeaturesLabel.BackgroundTransparency = 1; FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nItem ESP: ON | Light: ON"; FeaturesLabel.Font = Enum.Font.GothamSemibold; FeaturesLabel.TextSize = 12; FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left; FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top; FeaturesLabel.Parent = TopHUD
 
 -- Damage Log
 local DamageLogPanel = Instance.new("Frame"); DamageLogPanel.Size = UDim2.new(0, 180, 0, 160); DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80); DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20); DamageLogPanel.BackgroundTransparency = 0.3; DamageLogPanel.BorderSizePixel = 0; DamageLogPanel.Visible = Config.ShowDamageLog; DamageLogPanel.Parent = ScreenGui
@@ -369,6 +442,26 @@ local function CreateButton(parent, text, posY, callback, color)
     return btn
 end
 
+local function CreateTextBox(parent, placeholder, defaultText, posY, callback)
+    local frame = Instance.new("Frame"); frame.Size = UDim2.new(1, 0, 0, 30); frame.Position = UDim2.new(0, 0, 0, posY); frame.BackgroundTransparency = 1; frame.Parent = parent
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, 0, 1, 0)
+    box.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    box.TextColor3 = Color3.fromRGB(255, 255, 255)
+    box.PlaceholderText = placeholder
+    box.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+    box.Text = defaultText
+    box.Font = Enum.Font.Gotham
+    box.TextSize = 14
+    box.Parent = frame
+    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 6); corner.Parent = box
+    
+    box.FocusLost:Connect(function()
+        callback(box.Text)
+    end)
+    return box
+end
+
 -- Aimbot Tab
 CreateToggle(PageAimbot, "Aimbot Enabled", Config.AimbotEnabled, 0, function(v) Config.AimbotEnabled = v end)
 CreateToggle(PageAimbot, "Visible Aim", Config.VisibleAim, 35, function(v) Config.VisibleAim = v end)
@@ -376,28 +469,24 @@ CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 70, function(v) Config
 CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 120, function(v) Config.Smoothness = v / 100 end)
 local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 170, function() Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"; methodBtn.Text = "Method: " .. Config.AimbotMethod end)
 
--- Visuals Tab
-CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
+-- Visuals Tab (БЕЗ SNAPLINES, С ITEM ESP)
+CreateToggle(PageVisuals, "Player ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
-
--- ЧАМСЫ (ВОЗВРАЩЕНО)
 CreateToggle(PageVisuals, "Player Chams (Green/Red)", Config.PlayerChamsEnabled, 70, function(v) Config.PlayerChamsEnabled = v end)
+CreateSlider(PageVisuals, "ESP Color (Hue)", 0, 360, Config.ESPBoxHue, 105, function(v) Config.ESPBoxHue = v end)
 
--- Линии и цвета
-CreateToggle(PageVisuals, "Snaplines (Линии)", Config.SnaplinesEnabled, 105, function(v) Config.SnaplinesEnabled = v end)
-local snapOriginBtn = CreateButton(PageVisuals, "Snap Origin: " .. Config.SnaplineOrigin, 140, function()
-    Config.SnaplineOrigin = (Config.SnaplineOrigin == "Bottom") and "Center" or "Bottom"
-    snapOriginBtn.Text = "Snap Origin: " .. Config.SnaplineOrigin
-end)
+-- ITEM ESP
+CreateToggle(PageVisuals, "Item ESP (Рентген лута)", Config.ItemESPEnabled, 155, function(v) Config.ItemESPEnabled = v end)
+CreateTextBox(PageVisuals, "Фильтр (напр. ak, crate, пусто=все)", Config.ItemESPFilter, 190, function(text) Config.ItemESPFilter = text end)
+CreateSlider(PageVisuals, "Item ESP Distance", 50, 1000, Config.ItemESPMaxDist, 230, function(v) Config.ItemESPMaxDist = v end)
+CreateSlider(PageVisuals, "Item ESP Color (Hue)", 0, 360, Config.ItemESPColorHue, 280, function(v) Config.ItemESPColorHue = v end)
 
-CreateSlider(PageVisuals, "Snap Color (Hue)", 0, 360, Config.SnaplineHue, 180, function(v) Config.SnaplineHue = v end)
-CreateSlider(PageVisuals, "ESP Color (Hue)", 0, 360, Config.ESPBoxHue, 230, function(v) Config.ESPBoxHue = v end)
-
-CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, 280, function(v) Config.XRayEnabled = v; ApplyXRay() end)
-CreateSlider(PageVisuals, "Wall Transparency", 0, 100, Config.XRayValue, 315, function(v) Config.XRayValue = v; if Config.XRayEnabled then ApplyXRay() end end)
-CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, 365, function(v) Config.XRayDistance = v; if Config.XRayEnabled then ApplyXRay() end end)
-CreateToggle(PageVisuals, "Head Expander (Hitbox)", Config.HeadSizeEnabled, 410, function(v) Config.HeadSizeEnabled = v; if not v then for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end end end)
-CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 445, function(v) Config.HeadSizeValue = v end)
+-- Стены и хитбоксы
+CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, 330, function(v) Config.XRayEnabled = v; ApplyXRay() end)
+CreateSlider(PageVisuals, "Wall Transparency", 0, 100, Config.XRayValue, 365, function(v) Config.XRayValue = v; if Config.XRayEnabled then ApplyXRay() end end)
+CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, 415, function(v) Config.XRayDistance = v; if Config.XRayEnabled then ApplyXRay() end end)
+CreateToggle(PageVisuals, "Head Expander", Config.HeadSizeEnabled, 460, function(v) Config.HeadSizeEnabled = v; if not v then for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end end end)
+CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 495, function(v) Config.HeadSizeValue = v end)
 
 -- Optimizer Tab
 CreateToggle(PageOptimizer, "Shakal Textures", Config.OptTextures, 0, function(v) Config.OptTextures = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Transparency ~= nil then pcall(function() obj.Transparency = props.Transparency end) end end end end)
@@ -432,12 +521,14 @@ local function FullCleanup()
     for p, esp in pairs(ESPObjects) do pcall(function() 
         esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
         esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove();
-        esp.Snapline:Remove()
     end) end
     ESPObjects = {}
     
     for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
     ChamsObjects = {}
+    
+    for item, hl in pairs(ItemESPObjects) do pcall(function() hl:Destroy() end) end
+    ItemESPObjects = {}
     
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     DamagePopups = {}
@@ -485,7 +576,7 @@ end
 for _, p in pairs(Players:GetPlayers()) do TrackPlayer(p) end; Players.PlayerAdded:Connect(TrackPlayer)
 
 -- ============================================================================
--- ESP & CHAMS & SNAPLINES
+-- ESP ИГРОКОВ
 -- ============================================================================
 local FOVCircle = Drawing.new("Circle"); FOVCircle.Thickness = 2; FOVCircle.NumSides = 100; FOVCircle.Radius = Config.FOV; FOVCircle.Color = Color3.fromRGB(80, 120, 255); FOVCircle.Filled = false; FOVCircle.Visible = false
 
@@ -504,7 +595,6 @@ local function CreateESPObject()
     esp.Weapon = Drawing.new("Text"); esp.Weapon.Size = 14; esp.Weapon.Center = true; esp.Weapon.Outline = true; esp.Weapon.Color = Color3.fromRGB(255, 150, 50); esp.Weapon.Visible = false
     esp.HealthBarBg = Drawing.new("Square"); esp.HealthBarBg.Filled = true; esp.HealthBarBg.Color = Color3.fromRGB(0, 0, 0); esp.HealthBarBg.Thickness = 1; esp.HealthBarBg.Visible = false
     esp.HealthBarFill = Drawing.new("Square"); esp.HealthBarFill.Filled = true; esp.HealthBarFill.Color = Color3.fromRGB(0, 255, 0); esp.HealthBarFill.Visible = false
-    esp.Snapline = Drawing.new("Line"); esp.Snapline.Thickness = 1; esp.Snapline.Visible = false
     return esp
 end
 
@@ -512,7 +602,6 @@ local function CleanupESP(p)
     if ESPObjects[p] then local esp = ESPObjects[p]; pcall(function() 
         esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
         esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove();
-        esp.Snapline:Remove()
     end); ESPObjects[p] = nil end
 end
 
@@ -528,7 +617,6 @@ local function UpdateESP()
         for _, esp in pairs(ESPObjects) do 
             esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; 
             esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false; esp.Weapon.Visible = false
-            esp.Snapline.Visible = false
         end
         for _, chams in pairs(ChamsObjects) do chams.Enabled = false end
         return
@@ -538,8 +626,6 @@ local function UpdateESP()
     for p, _ in pairs(ChamsObjects) do if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end end
     
     local espColor = Color3.fromHSV(Config.ESPBoxHue / 360, 1, 1)
-    local snapColor = Color3.fromHSV(Config.SnaplineHue / 360, 1, 1)
-    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("Head") then
@@ -549,7 +635,6 @@ local function UpdateESP()
                 local dist = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
                 
                 if dist <= Config.ESPMaxDist then
-                    -- CHAMS ЛОГИКА
                     if Config.PlayerChamsEnabled then
                         if not ChamsObjects[p] or ChamsObjects[p].Parent ~= p.Character then
                             if ChamsObjects[p] then ChamsObjects[p]:Destroy() end
@@ -566,11 +651,11 @@ local function UpdateESP()
                         if tick() - (chams:GetAttribute("LastCheck") or 0) > 0.1 then
                             chams:SetAttribute("LastCheck", tick())
                             if IsVisible(p.Character) then
-                                chams.FillColor = Color3.fromRGB(0, 255, 0) -- Зеленый
+                                chams.FillColor = Color3.fromRGB(0, 255, 0)
                                 chams.OutlineColor = Color3.fromRGB(0, 255, 0)
                             else
-                                chams.FillColor = Color3.fromRGB(255, 0, 0) -- Красный
-                                chams.OutlineColor = Color3.fromRGB(255, 255, 255) -- Белая обводка
+                                chams.FillColor = Color3.fromRGB(255, 0, 0)
+                                chams.OutlineColor = Color3.fromRGB(255, 255, 255)
                             end
                         end
                     elseif ChamsObjects[p] then
@@ -578,36 +663,22 @@ local function UpdateESP()
                         ChamsObjects[p] = nil
                     end
 
-                    -- ESP ЛОГИКА
-                    if Config.ESPEnabled or Config.SnaplinesEnabled then
+                    if Config.ESPEnabled then
                         if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
                         local esp = ESPObjects[p]
                         local screenHead, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
                         local screenRoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
                         
                         if onScreen and screenHead.Z > 0 then
-                            if Config.ESPEnabled then
-                                local height = math.abs(screenHead.Y - screenRoot.Y); local width = height * 0.55; local x, y = screenHead.X - (width / 2), screenHead.Y; local length = width * 0.25
-                                for i=1, 4 do esp["Box"..i].Color = espColor end
-                                esp.Box1.From = Vector2.new(x, y); esp.Box1.To = Vector2.new(x + length, y); esp.Box2.From = Vector2.new(x, y); esp.Box2.To = Vector2.new(x, y + length); esp.Box3.From = Vector2.new(x + width, y + height); esp.Box3.To = Vector2.new(x + width - length, y + height); esp.Box4.From = Vector2.new(x + width, y + height); esp.Box4.To = Vector2.new(x + width, y + height - length)
-                                esp.Box1.Visible = true; esp.Box2.Visible = true; esp.Box3.Visible = true; esp.Box4.Visible = true
-                                esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, y - 45); esp.Name.Visible = true; esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, y - 30); esp.Dist.Visible = true
-                                if Config.ESPWeapon then local weaponName = GetWeaponName(p.Character); if weaponName then esp.Weapon.Text = "[" .. GetShortWeaponName(weaponName) .. "]"; esp.Weapon.Position = Vector2.new(screenHead.X, y - 15); esp.Weapon.Visible = true else esp.Weapon.Visible = false end else esp.Weapon.Visible = false end
-                                local barWidth = 3; local barHeight = height; local barX = x - 6; esp.HealthBarBg.Size = Vector2.new(barWidth, barHeight); esp.HealthBarBg.Position = Vector2.new(barX, y); esp.HealthBarBg.Visible = true; local healthPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1); local fillHeight = barHeight * healthPercent; esp.HealthBarFill.Size = Vector2.new(barWidth, fillHeight); esp.HealthBarFill.Position = Vector2.new(barX, y + (barHeight - fillHeight)); if healthPercent > 0.5 then esp.HealthBarFill.Color = Color3.fromRGB(255 * (1 - (healthPercent - 0.5) * 2), 255, 0) else esp.HealthBarFill.Color = Color3.fromRGB(255, 255 * (healthPercent * 2), 0) end; esp.HealthBarFill.Visible = true
-                            else
-                                esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false; esp.Weapon.Visible = false
-                            end
-                            
-                            if Config.SnaplinesEnabled then
-                                esp.Snapline.Color = snapColor
-                                esp.Snapline.Visible = true
-                                if Config.SnaplineOrigin == "Bottom" then esp.Snapline.From = Vector2.new(screenCenter.X, Camera.ViewportSize.Y) else esp.Snapline.From = screenCenter end
-                                esp.Snapline.To = Vector2.new(screenHead.X, screenHead.Y)
-                            else
-                                esp.Snapline.Visible = false
-                            end
+                            local height = math.abs(screenHead.Y - screenRoot.Y); local width = height * 0.55; local x, y = screenHead.X - (width / 2), screenHead.Y; local length = width * 0.25
+                            for i=1, 4 do esp["Box"..i].Color = espColor end
+                            esp.Box1.From = Vector2.new(x, y); esp.Box1.To = Vector2.new(x + length, y); esp.Box2.From = Vector2.new(x, y); esp.Box2.To = Vector2.new(x, y + length); esp.Box3.From = Vector2.new(x + width, y + height); esp.Box3.To = Vector2.new(x + width - length, y + height); esp.Box4.From = Vector2.new(x + width, y + height); esp.Box4.To = Vector2.new(x + width, y + height - length)
+                            esp.Box1.Visible = true; esp.Box2.Visible = true; esp.Box3.Visible = true; esp.Box4.Visible = true
+                            esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, y - 45); esp.Name.Visible = true; esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, y - 30); esp.Dist.Visible = true
+                            if Config.ESPWeapon then local weaponName = GetWeaponName(p.Character); if weaponName then esp.Weapon.Text = "[" .. GetShortWeaponName(weaponName) .. "]"; esp.Weapon.Position = Vector2.new(screenHead.X, y - 15); esp.Weapon.Visible = true else esp.Weapon.Visible = false end else esp.Weapon.Visible = false end
+                            local barWidth = 3; local barHeight = height; local barX = x - 6; esp.HealthBarBg.Size = Vector2.new(barWidth, barHeight); esp.HealthBarBg.Position = Vector2.new(barX, y); esp.HealthBarBg.Visible = true; local healthPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1); local fillHeight = barHeight * healthPercent; esp.HealthBarFill.Size = Vector2.new(barWidth, fillHeight); esp.HealthBarFill.Position = Vector2.new(barX, y + (barHeight - fillHeight)); if healthPercent > 0.5 then esp.HealthBarFill.Color = Color3.fromRGB(255 * (1 - (healthPercent - 0.5) * 2), 255, 0) else esp.HealthBarFill.Color = Color3.fromRGB(255, 255 * (healthPercent * 2), 0) end; esp.HealthBarFill.Visible = true
                         else 
-                            esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false; esp.Weapon.Visible = false; esp.Snapline.Visible = false
+                            esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthBarBg.Visible = false; esp.HealthBarFill.Visible = false; esp.Weapon.Visible = false
                         end
                     end
                 end
@@ -664,16 +735,17 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
+    if Config.ItemESPEnabled then pcall(UpdateItemESP) end -- Обновление рентгена предметов
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
     if State.Time >= 1 then State.FPS = math.floor(State.Frames / State.Time); State.Frames = 0; State.Time = 0 end
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nChams: %s | Snap: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.PlayerChamsEnabled and "ON" or "OFF", Config.SnaplinesEnabled and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nChams: %s | Item ESP: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.PlayerChamsEnabled and "ON" or "OFF", Config.ItemESPEnabled and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
-    if Config.ESPEnabled or Config.SnaplinesEnabled or Config.PlayerChamsEnabled then pcall(UpdateESP) end
+    if Config.ESPEnabled or Config.PlayerChamsEnabled then pcall(UpdateESP) end
 
     for i = #DamagePopups, 1, -1 do local popup = DamagePopups[i]; popup.Life = popup.Life - 0.02; popup.CurrentY = popup.CurrentY - 1.5; popup.Text.Position = Vector2.new(popup.Text.Position.X, popup.CurrentY); popup.Text.Transparency = popup.Life; if popup.Life <= 0 then pcall(function() popup.Text:Remove() end); table.remove(DamagePopups, i) end end
 
@@ -689,4 +761,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V39 Loaded. Visibility Chams & Snaplines active.")
+print("[pisunRust v2] V40 Loaded. Item ESP with Filter active.")
