@@ -1,4 +1,4 @@
--- RUST CLONE CHEAT - V5 (Умный Chams: Красный за стеной, Зеленый на виду)
+-- RUST CLONE CHEAT - V6 (Фикс фантомных ESP и Аимбота)
 -- Меню: ПРАВЫЙ SHIFT (RightShift)
 
 local Players = game:GetService("Players")
@@ -29,6 +29,9 @@ local holdingKey = false
 local targetPart = nil
 local isMenuOpen = true
 local isSprinting = false
+
+-- Максимальная дистанция отрисовки ESP (в метрах)
+local maxESPDistance = 600 
 
 local CONFIG_FILE = "RustCheat_Config.json"
 
@@ -205,7 +208,6 @@ end)
 local espObjects = {}
 local chamsObjects = {}
 
--- Функция проверки видимости (Raycast)
 local function isVisible(targetChar)
     local myChar = player.Character
     local targetPart = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
@@ -213,15 +215,11 @@ local function isVisible(targetChar)
 
     local rayOrigin = camera.CFrame.Position
     local rayDirection = targetPart.Position - rayOrigin
-    
-    -- Игнорируем своего персонажа и врага, чтобы луч не застрял в их коллизиях
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {myChar, targetChar}
 
     local rayResult = workspace:Raycast(rayOrigin, rayDirection, rayParams)
-    
-    -- Если луч ничего не встретил на пути к цели, значит цель на виду
     return rayResult == nil
 end
 
@@ -238,95 +236,98 @@ local function createESP(p)
 end
 
 local function updateESP()
+    -- Очистка "мертвых" ESP (если игрок умер или вышел)
+    for p, esp in pairs(espObjects) do
+        if not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
+            esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove()
+            espObjects[p] = nil
+        end
+    end
+    for p, chams in pairs(chamsObjects) do
+        if not p.Parent or not p.Character then
+            chams:Destroy()
+            chamsObjects[p] = nil
+        end
+    end
+
+    -- Отрисовка живых
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= player and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("Head") then
             local hum = p.Character.Humanoid
             local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+            
             if hum.Health > 0 and hrp then
+                local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                local distVal = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
                 
-                -- ЛОГИКА CHAMS
-                if chamsEnabled then
-                    if not chamsObjects[p] or chamsObjects[p].Parent ~= p.Character then
-                        if chamsObjects[p] then chamsObjects[p]:Destroy() end
-                        local chams = Instance.new("Highlight")
-                        chams.Name = "Cheat_Chams"
-                        chams.FillTransparency = 0.5
-                        chams.OutlineTransparency = 0
-                        chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Всегда видно сквозь стены
-                        chams.Parent = p.Character
+                -- Если игрок дальше 600 метров, не рисуем его (уберет мусор с экрана)
+                if distVal > maxESPDistance then
+                    if espObjects[p] then espObjects[p].Box.Visible = false; espObjects[p].Name.Visible = false; espObjects[p].Health.Visible = false; espObjects[p].Dist.Visible = false end
+                else
+                    -- ЛОГИКА CHAMS
+                    if chamsEnabled then
+                        if not chamsObjects[p] or chamsObjects[p].Parent ~= p.Character then
+                            if chamsObjects[p] then chamsObjects[p]:Destroy() end
+                            local chams = Instance.new("Highlight")
+                            chams.FillTransparency = 0.5
+                            chams.OutlineTransparency = 0
+                            chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            chams.Parent = p.Character
+                            chams:SetAttribute("LastCheck", 0)
+                            chamsObjects[p] = chams
+                        end
                         
-                        -- Создаем переменную для таймера
-                        chams:SetAttribute("LastCheck", 0)
-                        chamsObjects[p] = chams
+                        local chams = chamsObjects[p]
+                        local currentTime = tick()
+                        if currentTime - chams:GetAttribute("LastCheck") > 0.1 then
+                            chams:SetAttribute("LastCheck", currentTime)
+                            local visible = isVisible(p.Character)
+                            if visible then
+                                chams.FillColor = Color3.fromRGB(0, 255, 0)
+                                chams.OutlineColor = Color3.fromRGB(0, 255, 0)
+                            else
+                                chams.FillColor = Color3.fromRGB(255, 0, 0)
+                                chams.OutlineColor = Color3.fromRGB(255, 255, 255)
+                            end
+                        end
+                    elseif chamsObjects[p] then
+                        chamsObjects[p]:Destroy(); chamsObjects[p] = nil
                     end
-                    
-                    local chams = chamsObjects[p]
-                    
-                    -- Проверяем видимость раз в 0.1 секунды (для оптимизации)
-                    local currentTime = tick()
-                    local lastCheck = chams:GetAttribute("LastCheck")
-                    
-                    if currentTime - lastCheck > 0.1 then
-                        chams:SetAttribute("LastCheck", currentTime)
-                        local visible = isVisible(p.Character)
+
+                    -- ЛОГИКА ESP
+                    if espEnabled then
+                        if not espObjects[p] then espObjects[p] = createESP(p) end
+                        local esp = espObjects[p]
+                        local head = p.Character.Head
                         
-                        if visible then
-                            -- ВИДНО (Зеленый)
-                            chams.FillColor = Color3.fromRGB(0, 255, 0)
-                            chams.OutlineColor = Color3.fromRGB(0, 255, 0)
+                        local topPos = head.Position + Vector3.new(0, 0.5, 0)
+                        local bottomPos = hrp.Position - Vector3.new(0, 2.5, 0)
+                        local headScreen, onScreen = camera:WorldToViewportPoint(topPos)
+                        local rootScreen = camera:WorldToViewportPoint(bottomPos)
+                        
+                        if onScreen then
+                            local height = math.abs(headScreen.Y - rootScreen.Y)
+                            local width = height * 0.5 
+                            esp.Box.Size = Vector2.new(width, height)
+                            esp.Box.Position = Vector2.new(headScreen.X - (width / 2), headScreen.Y)
+                            esp.Box.Visible = true
+                            
+                            esp.Name.Text = p.Name
+                            esp.Name.Position = Vector2.new(headScreen.X, headScreen.Y - 32)
+                            esp.Name.Visible = true
+                            
+                            esp.Health.Text = "HP: " .. math.floor(hum.Health)
+                            esp.Health.Position = Vector2.new(headScreen.X, headScreen.Y + height + 2)
+                            esp.Health.Visible = true
+
+                            esp.Dist.Text = "[" .. distVal .. "m]"
+                            esp.Dist.Position = Vector2.new(headScreen.X, headScreen.Y - 18)
+                            esp.Dist.Visible = true
                         else
-                            -- ЗА СТЕНОЙ (Красный)
-                            chams.FillColor = Color3.fromRGB(255, 0, 0)
-                            chams.OutlineColor = Color3.fromRGB(255, 255, 255) -- Белая обводка для контраста
+                            esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false
                         end
                     end
-                    
-                elseif chamsObjects[p] then
-                    chamsObjects[p]:Destroy(); chamsObjects[p] = nil
                 end
-
-                -- ЛОГИКА ESP
-                if espEnabled then
-                    if not espObjects[p] then espObjects[p] = createESP(p) end
-                    local esp = espObjects[p]
-                    local head = p.Character.Head
-                    
-                    local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-                    local distVal = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
-                    
-                    local topPos = head.Position + Vector3.new(0, 0.5, 0)
-                    local bottomPos = hrp.Position - Vector3.new(0, 2.5, 0)
-                    local headScreen, onScreen = camera:WorldToViewportPoint(topPos)
-                    local rootScreen = camera:WorldToViewportPoint(bottomPos)
-                    
-                    if onScreen then
-                        local height = math.abs(headScreen.Y - rootScreen.Y)
-                        local width = height * 0.5 
-                        esp.Box.Size = Vector2.new(width, height)
-                        esp.Box.Position = Vector2.new(headScreen.X - (width / 2), headScreen.Y)
-                        esp.Box.Visible = true
-                        
-                        esp.Name.Text = p.Name
-                        esp.Name.Position = Vector2.new(headScreen.X, headScreen.Y - 32)
-                        esp.Name.Visible = true
-                        
-                        esp.Health.Text = "HP: " .. math.floor(hum.Health)
-                        esp.Health.Position = Vector2.new(headScreen.X, headScreen.Y + height + 2)
-                        esp.Health.Visible = true
-
-                        esp.Dist.Text = "[" .. distVal .. "m]"
-                        esp.Dist.Position = Vector2.new(headScreen.X, headScreen.Y - 18)
-                        esp.Dist.Visible = true
-                    else
-                        esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false
-                    end
-                elseif espObjects[p] then
-                    espObjects[p].Box:Remove(); espObjects[p].Name:Remove(); espObjects[p].Health:Remove(); espObjects[p].Dist:Remove()
-                    espObjects[p] = nil
-                end
-            else
-                if espObjects[p] then espObjects[p].Box:Remove(); espObjects[p].Name:Remove(); espObjects[p].Health:Remove(); espObjects[p].Dist:Remove(); espObjects[p] = nil end
-                if chamsObjects[p] then chamsObjects[p]:Destroy(); chamsObjects[p] = nil end
             end
         end
     end
@@ -346,19 +347,23 @@ local function getTarget()
             local head = p.Character:FindFirstChild("Head")
             
             if hum.Health > 0 and hrp and head then
-                local targetPos = (head.Position + hrp.Position) / 2 
+                local baseTargetPos = (head.Position + hrp.Position) / 2 
+                local screenPos, onScreen = camera:WorldToViewportPoint(baseTargetPos)
                 
-                if predictionEnabled then
-                    local velocity = hrp.AssemblyLinearVelocity
-                    targetPos = targetPos + (velocity * 0.15)
-                end
-                
-                local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
+                -- Сначала проверяем, попадает ли враг в круг (без учета предугадывания)
                 if onScreen then
                     local dist = (fovCenter - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
                     if dist < shortestDist then
                         shortestDist = dist
-                        closestPart = {part = hrp, pos = targetPos}
+                        
+                        -- А вот теперь применяем предугадывание, чтобы пуля летела наперерез
+                        local finalTargetPos = baseTargetPos
+                        if predictionEnabled then
+                            local velocity = hrp.AssemblyLinearVelocity
+                            finalTargetPos = finalTargetPos + (velocity * 0.15)
+                        end
+                        
+                        closestPart = {part = hrp, pos = finalTargetPos}
                     end
                 end
             end
@@ -376,10 +381,7 @@ RunService.RenderStepped:Connect(function()
     fovCircle.Radius = circleRadius
     fovCircle.Visible = showFov
 
-    if espEnabled or chamsEnabled then updateESP() else
-        for p, esp in pairs(espObjects) do esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove(); espObjects[p] = nil end
-        for p, chams in pairs(chamsObjects) do chams:Destroy(); chamsObjects[p] = nil end
-    end
+    if espEnabled or chamsEnabled then updateESP() end
 
     if autoSprintEnabled then
         if not isSprinting then keypress(Enum.KeyCode.LeftShift); isSprinting = true end
