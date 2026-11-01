@@ -1,4 +1,4 @@
--- RUST CLONE CHEAT - V3 (Chams, Distance, AutoSprint, Prediction)
+-- RUST CLONE CHEAT - V4 (Исправлена ошибка пустого меню)
 -- Меню: ПРАВЫЙ SHIFT (RightShift)
 
 local Players = game:GetService("Players")
@@ -13,9 +13,9 @@ local mouse = player:GetMouse()
 local aimbotEnabled = true
 local silentAimEnabled = false
 local espEnabled = true
-local chamsEnabled = true       -- НОВОЕ: Подсветка моделей
-local autoSprintEnabled = false -- НОВОЕ: Авто-бег
-local predictionEnabled = true  -- НОВОЕ: Упреждение пуль
+local chamsEnabled = true
+local autoSprintEnabled = false
+local predictionEnabled = true
 local aimPartOption = "Center"
 local circleRadius = 80       
 local smoothness = 0.50         
@@ -42,7 +42,7 @@ ScreenGui.Name = "RustCheatUI"
 ScreenGui.Parent = _guiParent
 ScreenGui.ResetOnSpawn = false
 
--- МЕНЮ ЕЩЕ БОЛЬШЕ
+-- МЕНЮ
 local Frame = Instance.new("Frame", ScreenGui)
 Frame.Size = UDim2.new(0, 420, 0, 680) 
 Frame.Position = UDim2.new(0.5, -210, 0.5, -340)
@@ -69,7 +69,11 @@ fovCircle.Filled = false
 fovCircle.Visible = false
 fovCircle.Transparency = 0.8
 
--- ================= ЭЛЕМЕНТЫ МЕНЮ =================
+-- ================= ПЕРЕМЕННЫЕ UI =================
+local espBtn, aimBtn, silentBtn, chamsBtn, sprintBtn, predBtn, partBtn, fovLabel, smoothLabel, offsetLabel, offsetXLabel, bindBtn
+local waitingForKey = false
+
+-- ================= ФУНКЦИИ UI =================
 local function createBtn(text, pos, size, callback)
     local btn = Instance.new("TextButton", Frame)
     btn.Size = size
@@ -83,11 +87,8 @@ local function createBtn(text, pos, size, callback)
     return btn
 end
 
-local espBtn, aimBtn, silentBtn, chamsBtn, sprintBtn, predBtn, partBtn, fovLabel, smoothLabel, offsetLabel, offsetXLabel, bindBtn
-local waitingForKey = false
-
 function updateUI()
-    if not espBtn then return end
+    if not espBtn then return end -- Защита от краша, если кнопок еще нет
     espBtn.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
     espBtn.BackgroundColor3 = espEnabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(50, 50, 50)
     
@@ -112,7 +113,7 @@ function updateUI()
     offsetLabel.Text = "Offset Y: " .. fovOffsetY
     offsetXLabel.Text = "Offset X: " .. fovOffsetX
     
-    if not waitingForKey then
+    if not waitingForKey and bindBtn then
         local keyName = tostring(activationKey):gsub("Enum.UserInputType.", ""):gsub("Enum.KeyCode.", "")
         bindBtn.Text = "Aim Key: " .. keyName
     end
@@ -120,6 +121,7 @@ end
 
 -- ================= СИСТЕМА КОНФИГОВ =================
 local function saveConfig()
+    if not bindBtn then return end
     local config = {
         aimbotEnabled = aimbotEnabled, silentAimEnabled = silentAimEnabled,
         espEnabled = espEnabled, chamsEnabled = chamsEnabled,
@@ -153,11 +155,14 @@ local function loadConfig()
             if data.isKeyUserInputType then activationKey = Enum.UserInputType[data.keyString]
             else activationKey = Enum.KeyCode[data.keyString] end
         end
-        updateUI(); bindBtn.Text = "Config Loaded!"; task.wait(1); updateUI()
+        updateUI() 
+        if bindBtn then
+            bindBtn.Text = "Config Loaded!"
+            task.wait(1)
+            updateUI()
+        end
     end
 end
-loadConfig()
-updateUI()
 
 -- ================= СОЗДАНИЕ КНОПОК =================
 -- Ряд 1
@@ -201,6 +206,10 @@ bindBtn.MouseButton1Click:Connect(function() waitingForKey = true; bindBtn.Text 
 createBtn("SAVE CONFIG", UDim2.new(0.05, 0, 0.78, 0), UDim2.new(0.42, 0, 0, 35), saveConfig)
 createBtn("LOAD CONFIG", UDim2.new(0.53, 0, 0.78, 0), UDim2.new(0.42, 0, 0, 35), loadConfig)
 
+-- ================= ИНИЦИАЛИЗАЦИЯ (ТЕПЕРЬ В КОНЦЕ) =================
+loadConfig() -- Загружаем конфиг ТОЛЬКО после создания всех кнопок
+updateUI()   -- Обновляем интерфейс
+
 -- ================= ОБРАБОТКА ВВОДА =================
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == menuKey then isMenuOpen = not isMenuOpen; Frame.Visible = isMenuOpen; return end
@@ -238,7 +247,6 @@ local function updateESP()
             local hrp = p.Character:FindFirstChild("HumanoidRootPart")
             if hum.Health > 0 and hrp then
                 
-                -- ЛОГИКА CHAMS
                 if chamsEnabled then
                     if not chamsObjects[p] or chamsObjects[p].Parent ~= p.Character then
                         if chamsObjects[p] then chamsObjects[p]:Destroy() end
@@ -255,15 +263,13 @@ local function updateESP()
                     chamsObjects[p]:Destroy(); chamsObjects[p] = nil
                 end
 
-                -- ЛОГИКА ESP
                 if espEnabled then
                     if not espObjects[p] then espObjects[p] = createESP(p) end
                     local esp = espObjects[p]
                     local head = p.Character.Head
                     
-                    -- Дистанция
                     local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-                    local distVal = myRoot and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
+                    local distVal = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
                     
                     local topPos = head.Position + Vector3.new(0, 0.5, 0)
                     local bottomPos = hrp.Position - Vector3.new(0, 2.5, 0)
@@ -303,7 +309,7 @@ local function updateESP()
     end
 end
 
--- ================= AIMBOT С ПРЕДУГАДЫВАНИЕМ =================
+-- ================= AIMBOT =================
 local function getTarget()
     local closestPart = nil
     local shortestDist = circleRadius
@@ -319,13 +325,9 @@ local function getTarget()
             if hum.Health > 0 and hrp and head then
                 local targetPos = (head.Position + hrp.Position) / 2 
                 
-                -- ЛОГИКА ПРЕДУГАДЫВАНИЯ (Упреждение)
                 if predictionEnabled then
                     local velocity = hrp.AssemblyLinearVelocity
-                    -- Берем скорость и умножаем на примерное время полета пули (пинг + скорость пули)
-                    -- 0.15 - это среднее время полета пули в таких играх
-                    local predictedPos = targetPos + (velocity * 0.15)
-                    targetPos = predictedPos 
+                    targetPos = targetPos + (velocity * 0.15)
                 end
                 
                 local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
@@ -356,7 +358,6 @@ RunService.RenderStepped:Connect(function()
         for p, chams in pairs(chamsObjects) do chams:Destroy(); chamsObjects[p] = nil end
     end
 
-    -- АВТО-СПРИНТ (Зажимает Shift)
     if autoSprintEnabled then
         if not isSprinting then
             keypress(Enum.KeyCode.LeftShift)
