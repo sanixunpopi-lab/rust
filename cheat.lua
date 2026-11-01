@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V45 - WALLSHOT FIX & HP TEXT)
+    pisunRust v2 - OMNIX FRAMEWORK (V46 - MEMORY LEAK FIX & STABLE)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -28,7 +28,7 @@ local Config = {
     ESPEnabled = false,
     ESPMaxDist = 1000,
     ESPWeapon = false,
-    ESPHealthText = true, -- Текст HP вместо полоски
+    ESPHealthText = true,
     DamageNumbers = false,
     ShowDamageLog = false,
     
@@ -86,12 +86,11 @@ local OriginalHeadSizes = {}
 local OriginalProps = {} 
 
 -- ============================================================================
--- WALLSHOT (ХУК ВСЕХ ВИДОВ ЛУЧЕЙ)
+-- WALLSHOT (БЕЗОПАСНЫЙ ХУК)
 -- ============================================================================
 task.spawn(function()
     if type(hookfunction) == "function" then
         pcall(function()
-            -- 1. Стандартный Raycast
             local oldRaycast = workspace.Raycast
             hookfunction(workspace.Raycast, function(self, origin, direction, params)
                 if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
@@ -107,50 +106,6 @@ task.spawn(function()
                     if result and result.Instance then return result end
                 end
                 return oldRaycast(self, origin, direction, params)
-            end)
-        end)
-
-        -- 2. Устаревший FindPartOnRayWithIgnoreList (часто используется в старых играх)
-        pcall(function()
-            local oldFindPart = workspace.FindPartOnRayWithIgnoreList
-            hookfunction(workspace.FindPartOnRayWithIgnoreList, function(self, ray, ignoreList, ...)
-                if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
-                    local newIgnoreList = {}
-                    for _, obj in pairs(workspace:GetDescendants()) do
-                        if not obj:IsA("Model") or not obj:FindFirstChildOfClass("Humanoid") then
-                            table.insert(newIgnoreList, obj)
-                        end
-                    end
-                    -- Убираем игроков из игнор-листа, чтобы луч их видел
-                    for _, p in pairs(Players:GetPlayers()) do
-                        if p.Character then
-                            for i = #newIgnoreList, 1, -1 do
-                                if newIgnoreList[i] == p.Character then table.remove(newIgnoreList, i) end
-                            end
-                        end
-                    end
-                    local part, pos = oldFindPart(self, ray, newIgnoreList, ...)
-                    if part then return part, pos end
-                end
-                return oldFindPart(self, ray, ignoreList, ...)
-            end)
-        end)
-
-        -- 3. Обычный FindPartOnRay
-        pcall(function()
-            local oldFindPartOnRay = workspace.FindPartOnRay
-            hookfunction(workspace.FindPartOnRay, function(self, ray, ...)
-                if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
-                    local newIgnoreList = {}
-                    for _, obj in pairs(workspace:GetDescendants()) do
-                        if not obj:IsA("Model") or not obj:FindFirstChildOfClass("Humanoid") then
-                            table.insert(newIgnoreList, obj)
-                        end
-                    end
-                    local part, pos = oldFindPartOnRay(self, ray, newIgnoreList, ...)
-                    if part then return part, pos end
-                end
-                return oldFindPartOnRay(self, ray, ...)
             end)
         end)
     end
@@ -184,11 +139,12 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ITEM ESP
+-- ITEM ESP (БЕЗ УТЕЧКИ ПАМЯТИ)
 -- ============================================================================
 local function UpdateItemESP()
     if State.Unloaded then return end
     
+    -- Очистка удаленных/далеких предметов
     for item, esp in pairs(ItemESPObjects) do
         if not item or not item.Parent or not Config.ItemESPEnabled then
             esp.Box:Remove(); esp.Text:Remove()
@@ -567,7 +523,7 @@ methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, function
 -- Visuals
 CreateToggle(PageVisuals, "Player ESP Boxes", Config.ESPEnabled, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, function(v) Config.ESPWeapon = v end)
-CreateToggle(PageVisuals, "ESP Health Text (HP)", Config.ESPHealthText, function(v) Config.ESPHealthText = v end) -- НОВЫЙ ТУМБЛЕР
+CreateToggle(PageVisuals, "ESP Health Text (HP)", Config.ESPHealthText, function(v) Config.ESPHealthText = v end)
 CreateToggle(PageVisuals, "Player Chams (Green/Red)", Config.PlayerChamsEnabled, function(v) Config.PlayerChamsEnabled = v end)
 CreateSlider(PageVisuals, "ESP Color (Hue)", 0, 360, Config.ESPBoxHue, function(v) Config.ESPBoxHue = v end)
 
@@ -617,10 +573,13 @@ local function FullCleanup()
     Connections = {}
     if ScreenGui then pcall(function() ScreenGui:Destroy() end) end
     pcall(function() FOVCircle:Remove() end)
-    for p, esp in pairs(ESPObjects) do pcall(function() 
-        esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
-        esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove();
-    end) end
+    
+    for p, esp in pairs(ESPObjects) do 
+        pcall(function() 
+            esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
+            esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove();
+        end) 
+    end
     ESPObjects = {}
     
     for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
@@ -675,7 +634,7 @@ end
 for _, p in pairs(Players:GetPlayers()) do TrackPlayer(p) end; Players.PlayerAdded:Connect(TrackPlayer)
 
 -- ============================================================================
--- ESP ИГРОКОВ
+-- ESP ИГРОКОВ (ФИКС УТЕЧКИ ПАМЯТИ)
 -- ============================================================================
 local FOVCircle = Drawing.new("Circle"); FOVCircle.Thickness = 2; FOVCircle.NumSides = 100; FOVCircle.Radius = Config.FOV; FOVCircle.Color = Color3.fromRGB(80, 120, 255); FOVCircle.Filled = false; FOVCircle.Visible = false
 
@@ -686,21 +645,28 @@ local function IsVisible(targetChar)
     return workspace:Raycast(Camera.CFrame.Position, targetPart.Position - Camera.CFrame.Position, RayParams) == nil
 end
 
-local function CreateESPObject()
+local function RemoveESP(p)
+    if ESPObjects[p] then 
+        local esp = ESPObjects[p]
+        pcall(function() 
+            esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
+            esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove();
+        end)
+        ESPObjects[p] = nil 
+    end
+end
+
+local function CreateESP(p)
+    RemoveESP(p) -- Чистим старое, если было
+    
     local esp = {}
     for i=1, 4 do esp["Box"..i] = Drawing.new("Line"); esp["Box"..i].Thickness = 1.5; esp["Box"..i].Visible = false end
     esp.Name = Drawing.new("Text"); esp.Name.Size = 15; esp.Name.Center = true; esp.Name.Outline = true; esp.Name.Font = 2; esp.Name.Color = Color3.fromRGB(255, 255, 255); esp.Name.Visible = false
     esp.Dist = Drawing.new("Text"); esp.Dist.Size = 13; esp.Dist.Center = true; esp.Dist.Outline = true; esp.Dist.Color = Color3.fromRGB(255, 200, 0); esp.Dist.Visible = false
     esp.Weapon = Drawing.new("Text"); esp.Weapon.Size = 14; esp.Weapon.Center = true; esp.Weapon.Outline = true; esp.Weapon.Color = Color3.fromRGB(255, 150, 50); esp.Weapon.Visible = false
-    esp.HealthText = Drawing.new("Text"); esp.HealthText.Size = 14; esp.HealthText.Center = true; esp.HealthText.Outline = true; esp.HealthText.Color = Color3.fromRGB(0, 255, 0); esp.HealthText.Visible = false -- НОВЫЙ ТЕКСТ HP
-    return esp
-end
-
-local function CleanupESP(p)
-    if ESPObjects[p] then local esp = ESPObjects[p]; pcall(function() 
-        esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); 
-        esp.Name:Remove(); esp.Dist:Remove(); esp.HealthText:Remove(); esp.Weapon:Remove();
-    end); ESPObjects[p] = nil end
+    esp.HealthText = Drawing.new("Text"); esp.HealthText.Size = 14; esp.HealthText.Center = true; esp.HealthText.Outline = true; esp.HealthText.Color = Color3.fromRGB(0, 255, 0); esp.HealthText.Visible = false
+    
+    ESPObjects[p] = esp
 end
 
 local function CleanupChams(p)
@@ -708,15 +674,21 @@ local function CleanupChams(p)
 end
 
 Players.PlayerRemoving:Connect(function(p) 
-    CleanupESP(p); CleanupChams(p)
+    RemoveESP(p); CleanupChams(p)
     if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end 
 end)
 
 for _, p in pairs(Players:GetPlayers()) do
-    p.CharacterAdded:Connect(function() CleanupESP(p); CleanupChams(p) end)
+    if p ~= LocalPlayer then
+        CreateESP(p)
+        p.CharacterAdded:Connect(function() CreateESP(p); CleanupChams(p) end)
+    end
 end
 Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function() CleanupESP(p); CleanupChams(p) end)
+    if p ~= LocalPlayer then
+        CreateESP(p)
+        p.CharacterAdded:Connect(function() CreateESP(p); CleanupChams(p) end)
+    end
 end)
 
 local function UpdateESP()
@@ -760,8 +732,10 @@ local function UpdateESP()
                         else CleanupChams(p) end
 
                         if Config.ESPEnabled then
-                            if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
+                            -- Если ESP нет (например, только что зашел), создаем
+                            if not ESPObjects[p] then CreateESP(p) end
                             local esp = ESPObjects[p]
+                            
                             local screenHead, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
                             local screenRoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
                             
@@ -781,17 +755,14 @@ local function UpdateESP()
                                     else esp.Weapon.Visible = false end 
                                 else esp.Weapon.Visible = false end
                                 
-                                -- ЛОГИКА ТЕКСТА HP
                                 if Config.ESPHealthText then
                                     esp.HealthText.Text = "HP: " .. math.floor(hum.Health)
-                                    esp.HealthText.Position = Vector2.new(screenHead.X, y + height + 5) -- Под квадратом
+                                    esp.HealthText.Position = Vector2.new(screenHead.X, y + height + 5)
                                     if hum.Health > 50 then esp.HealthText.Color = Color3.fromRGB(0, 255, 0) 
                                     elseif hum.Health > 25 then esp.HealthText.Color = Color3.fromRGB(255, 200, 0)
                                     else esp.HealthText.Color = Color3.fromRGB(255, 50, 50) end
                                     esp.HealthText.Visible = true
-                                else
-                                    esp.HealthText.Visible = false
-                                end
+                                else esp.HealthText.Visible = false end
                             else 
                                 esp.Box1.Visible = false; esp.Box2.Visible = false; esp.Box3.Visible = false; esp.Box4.Visible = false; esp.Name.Visible = false; esp.Dist.Visible = false; esp.HealthText.Visible = false; esp.Weapon.Visible = false
                             end
@@ -906,4 +877,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V45 Loaded. Wallshot Fixed & HP Text active.")
+print("[pisunRust v2] V46 Loaded. Memory Leak Fixed.")
