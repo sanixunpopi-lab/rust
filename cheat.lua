@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V34 - COSMETICS FIX)
+    pisunRust v2 - OMNIX FRAMEWORK (V35 - RAINBOW CHAMS)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -43,11 +43,10 @@ local Config = {
     OptParticles = false,    
     OptGraphics = false,     
     
-    -- КОСМЕТИКА
-    ThirdPersonEnabled = false,
-    ThirdPersonDist = 15,
-    ChinaHatEnabled = false,
-    TrailEnabled = false,
+    -- НОВЫЕ ЧАМСЫ
+    HandChamsEnabled = false,
+    ItemChamsEnabled = false,
+    RainbowChams = false,    -- Радужный цвет
     
     AutoSprint = false,
     Fullbright = true,
@@ -76,6 +75,8 @@ local State = {
 
 local ESPObjects = {}
 local ChamsObjects = {}
+local ItemChamsObjects = {}
+local HandChamsObject = nil
 local DamagePopups = {}
 local ActiveNotifications = {}
 local Connections = {}
@@ -102,80 +103,83 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- КОСМЕТИКА: ШЛЯПА И ТРЕЙЛ (ФИКС)
+-- СИСТЕМА ЧАМСОВ (РУКИ И ПРЕДМЕТЫ)
 -- ============================================================================
-local function UpdateCosmetics()
+local function ApplyChamsColor(highlight)
+    if Config.RainbowChams then
+        local hue = (tick() * 0.5) % 1
+        local color = Color3.fromHSV(hue, 1, 1)
+        highlight.FillColor = color
+        highlight.OutlineColor = color
+    else
+        highlight.FillColor = Color3.fromRGB(0, 150, 255) -- Синий по умолчанию
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    end
+end
+
+local function UpdateHandChams()
     if State.Unloaded then return end
     local char = LocalPlayer.Character
-    if not char then return end
     
-    local head = char:FindFirstChild("Head")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if Config.HandChamsEnabled and char then
+        if not HandChamsObject or HandChamsObject.Parent ~= char then
+            if HandChamsObject then HandChamsObject:Destroy() end
+            HandChamsObject = Instance.new("Highlight")
+            HandChamsObject.Name = "CheatHandChams"
+            HandChamsObject.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            HandChamsObject.FillTransparency = 0.5
+            HandChamsObject.OutlineTransparency = 0
+            HandChamsObject.Parent = char
+        end
+        ApplyChamsColor(HandChamsObject)
+    elseif HandChamsObject then
+        HandChamsObject:Destroy()
+        HandChamsObject = nil
+    end
+end
 
-    -- 1. China Hat (Шляпа) - ИСПРАВЛЕНО (Weld)
-    if head then
-        local hat = head:FindFirstChild("CheatChinaHat")
-        if Config.ChinaHatEnabled then
-            if not hat then
-                hat = Instance.new("Part")
-                hat.Name = "CheatChinaHat"
-                hat.Size = Vector3.new(2, 2, 2)
-                hat.Material = Enum.Material.Neon
-                hat.CanCollide = false
-                hat.Massless = true
-                hat.CFrame = head.CFrame * CFrame.new(0, 1.5, 0)
-                hat.Parent = head
-
-                local mesh = Instance.new("SpecialMesh")
-                mesh.MeshType = Enum.MeshType.Cone
-                mesh.Scale = Vector3.new(1, 1, 1)
-                mesh.Parent = hat
-
-                local weld = Instance.new("Weld")
-                weld.Part0 = head
-                weld.Part1 = hat
-                weld.C0 = CFrame.new(0, 1.5, 0)
-                weld.Parent = hat
+local function UpdateItemChams()
+    if State.Unloaded then return end
+    
+    -- Очистка старых и вышедших за радиус
+    for item, chams in pairs(ItemChamsObjects) do
+        if not item or not item.Parent or not Config.ItemChamsEnabled then
+            chams:Destroy()
+            ItemChamsObjects[item] = nil
+        else
+            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myRoot and (item.Position - myRoot.Position).Magnitude > 100 then
+                chams:Destroy()
+                ItemChamsObjects[item] = nil
             end
-            local hue = (tick() * 0.5) % 1
-            hat.Color = Color3.fromHSV(hue, 1, 1)
-        elseif hat then
-            hat:Destroy()
         end
     end
 
-    -- 2. Trail (След) - ИСПРАВЛЕНО (Позиция по бокам и свечение)
-    if hrp then
-        local trail = hrp:FindFirstChild("CheatTrail")
-        if Config.TrailEnabled then
-            if not trail then
-                local a0 = Instance.new("Attachment")
-                a0.Position = Vector3.new(1, 0, 0) -- Сдвиг вправо
-                a0.Name = "TrailA0"
-                a0.Parent = hrp
+    -- Поиск новых (только в радиусе 100 метров)
+    if Config.ItemChamsEnabled then
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
 
-                local a1 = Instance.new("Attachment")
-                a1.Position = Vector3.new(-1, 0, 0) -- Сдвиг влево
-                a1.Name = "TrailA1"
-                a1.Parent = hrp
-
-                trail = Instance.new("Trail")
-                trail.Name = "CheatTrail"
-                trail.Attachment0 = a0
-                trail.Attachment1 = a1
-                trail.Lifetime = 1
-                trail.MinLength = 0
-                trail.LightEmission = 1 -- Добавил свечение
-                trail.Parent = hrp
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("Tool") or (obj:IsA("Model") and (string.find(string.lower(obj.Name), "weapon") or string.find(string.lower(obj.Name), "crate") or string.find(string.lower(obj.Name), "loot"))) then
+                if not ItemChamsObjects[obj] then
+                    local part = obj:FindFirstChildWhichIsA("BasePart")
+                    if part and (part.Position - myRoot.Position).Magnitude <= 100 then
+                        local hl = Instance.new("Highlight")
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        hl.FillTransparency = 0.5
+                        hl.OutlineTransparency = 0
+                        hl.Parent = obj
+                        ItemChamsObjects[obj] = hl
+                    end
+                end
             end
-            local hue = (tick() * 0.5) % 1
-            local color = Color3.fromHSV(hue, 1, 1)
-            trail.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, color), ColorSequenceKeypoint.new(1, color)}
-        elseif trail then
-            trail:Destroy()
-            if hrp:FindFirstChild("TrailA0") then hrp.TrailA0:Destroy() end
-            if hrp:FindFirstChild("TrailA1") then hrp.TrailA1:Destroy() end
         end
+    end
+    
+    -- Обновление цвета
+    for _, chams in pairs(ItemChamsObjects) do
+        ApplyChamsColor(chams)
     end
 end
 
@@ -298,7 +302,7 @@ task.spawn(function()
 end)
 
 -- ============================================================================
--- ОРУЖИЕ
+-- ОРУЖИЕ (ДЛЯ ESP)
 -- ============================================================================
 local function GetWeaponName(character)
     local tool = character:FindFirstChildOfClass("Tool")
@@ -402,7 +406,7 @@ end
 
 local PageAimbot = CreateTab("Aimbot")
 local PageVisuals = CreateTab("Visuals")
-local PageCosmetics = CreateTab("Cosmetics")
+local PageChams = CreateTab("Chams")
 local PageOptimizer = CreateTab("Optimizer")
 local PageBinds = CreateTab("Binds")
 local PageMisc = CreateTab("Misc")
@@ -459,7 +463,7 @@ local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 17
 -- Visuals Tab
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
-CreateToggle(PageVisuals, "Chams", Config.ChamsEnabled, 70, function(v) Config.ChamsEnabled = v end)
+CreateToggle(PageVisuals, "Player Chams", Config.ChamsEnabled, 70, function(v) Config.ChamsEnabled = v end)
 CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, 105, function(v) Config.XRayEnabled = v; ApplyXRay() end)
 CreateSlider(PageVisuals, "Wall Transparency (0-100)", 0, 100, Config.XRayValue, 140, function(v) Config.XRayValue = v; if Config.XRayEnabled then ApplyXRay() end end)
 CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, 190, function(v) Config.XRayDistance = v; if Config.XRayEnabled then ApplyXRay() end end)
@@ -468,11 +472,10 @@ CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 270, fun
 CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 315, function(v) Config.DamageNumbers = v end)
 CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 350, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
 
--- COSMETICS TAB
-CreateToggle(PageCosmetics, "Third Person (3-й вид)", Config.ThirdPersonEnabled, 0, function(v) Config.ThirdPersonEnabled = v end)
-CreateSlider(PageCosmetics, "Camera Distance", 5, 30, Config.ThirdPersonDist, 35, function(v) Config.ThirdPersonDist = v end)
-CreateToggle(PageCosmetics, "China Hat (Шляпа)", Config.ChinaHatEnabled, 80, function(v) Config.ChinaHatEnabled = v end)
-CreateToggle(PageCosmetics, "Rainbow Trail (След)", Config.TrailEnabled, 115, function(v) Config.TrailEnabled = v end)
+-- CHAMS TAB (НОВОЕ)
+CreateToggle(PageChams, "Hands Chams (Руки)", Config.HandChamsEnabled, 0, function(v) Config.HandChamsEnabled = v end)
+CreateToggle(PageChams, "Item Chams (Предметы)", Config.ItemChamsEnabled, 35, function(v) Config.ItemChamsEnabled = v end)
+CreateToggle(PageChams, "Rainbow Color (Радуга)", Config.RainbowChams, 70, function(v) Config.RainbowChams = v end)
 
 -- Optimizer Tab
 CreateToggle(PageOptimizer, "Shakal Textures (Текстуры)", Config.OptTextures, 0, function(v) Config.OptTextures = v; if v then ApplyOptimization() else for obj, props in pairs(OriginalProps) do if props.Transparency ~= nil then pcall(function() obj.Transparency = props.Transparency end) end end end end)
@@ -509,6 +512,9 @@ local function FullCleanup()
     ESPObjects = {}
     for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
     ChamsObjects = {}
+    for item, chams in pairs(ItemChamsObjects) do pcall(function() chams:Destroy() end) end
+    ItemChamsObjects = {}
+    if HandChamsObject then pcall(function() HandChamsObject:Destroy() end); HandChamsObject = nil end
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     DamagePopups = {}
     
@@ -516,21 +522,6 @@ local function FullCleanup()
     OriginalTransparencies = {}
     for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end
     OriginalHeadSizes = {}
-    
-    if LocalPlayer.Character then
-        local head = LocalPlayer.Character:FindFirstChild("Head")
-        if head and head:FindFirstChild("CheatChinaHat") then head.CheatChinaHat:Destroy() end
-        local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            if hrp:FindFirstChild("CheatTrail") then hrp.CheatTrail:Destroy() end
-            if hrp:FindFirstChild("TrailA0") then hrp.TrailA0:Destroy() end
-            if hrp:FindFirstChild("TrailA1") then hrp.TrailA1:Destroy() end
-        end
-    end
-    
-    LocalPlayer.CameraMode = Enum.CameraMode.Classic
-    LocalPlayer.CameraMaxZoomDistance = 128
-    LocalPlayer.CameraMinZoomDistance = 0.5
     
     RestoreOptimization() 
     
@@ -682,25 +673,17 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
-    pcall(UpdateCosmetics)
     
-    -- 3-й вид (ФИКС: Жесткая привязка каждый кадр)
-    if Config.ThirdPersonEnabled then
-        LocalPlayer.CameraMode = Enum.CameraMode.Classic
-        if LocalPlayer.CameraMaxZoomDistance ~= Config.ThirdPersonDist then LocalPlayer.CameraMaxZoomDistance = Config.ThirdPersonDist end
-        if LocalPlayer.CameraMinZoomDistance ~= Config.ThirdPersonDist then LocalPlayer.CameraMinZoomDistance = Config.ThirdPersonDist end
-    else
-        LocalPlayer.CameraMode = Enum.CameraMode.Classic
-        if LocalPlayer.CameraMaxZoomDistance ~= 128 then LocalPlayer.CameraMaxZoomDistance = 128 end
-        if LocalPlayer.CameraMinZoomDistance ~= 0.5 then LocalPlayer.CameraMinZoomDistance = 0.5 end
-    end
+    -- Чамсы
+    if Config.HandChamsEnabled then pcall(UpdateHandChams) elseif HandChamsObject then HandChamsObject:Destroy(); HandChamsObject = nil end
+    if Config.ItemChamsEnabled or Config.RainbowChams then pcall(UpdateItemChams) end
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
     if State.Time >= 1 then State.FPS = math.floor(State.Frames / State.Time); State.Frames = 0; State.Time = 0 end
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nHat: %s | Trail: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.ChinaHatEnabled and "ON" or "OFF", Config.TrailEnabled and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nHand Chams: %s | Item Chams: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.HandChamsEnabled and "ON" or "OFF", Config.ItemChamsEnabled and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
     if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
@@ -719,4 +702,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V34 Loaded. Cosmetics fixed.")
+print("[pisunRust v2] V35 Loaded. Rainbow Chams active.")
