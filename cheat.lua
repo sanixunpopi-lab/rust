@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V27 - X-RAY DISTANCE)
+    pisunRust v2 - OMNIX FRAMEWORK (V28 - HEAD EXPANDER)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -32,8 +32,11 @@ local Config = {
     ShowDamageLog = true,
     
     XRayEnabled = false,
-    XRayValue = 50,          -- Прозрачность (0-100)
-    XRayDistance = 500,      -- НОВОЕ: Радиус рентгена (100-1500)
+    XRayValue = 50,          
+    XRayDistance = 500,      
+    
+    HeadSizeEnabled = false, -- НОВОЕ: Расширение головы
+    HeadSizeValue = 1,       -- НОВОЕ: Множитель (1-5)
     
     AutoSprint = false,
     Fullbright = true,
@@ -66,6 +69,7 @@ local DamagePopups = {}
 local ActiveNotifications = {}
 local Connections = {}
 local OriginalTransparencies = {}
+local OriginalHeadSizes = {} -- Для хранения оригинальных размеров голов
 
 -- ============================================================================
 -- FULLBRIGHT
@@ -86,7 +90,45 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- СИСТЕМА X-RAY (С РАДИУСОМ ДИСТАНЦИИ)
+-- СИСТЕМА РАСШИРЕНИЯ ГОЛОВЫ (HEAD EXPANDER)
+-- ============================================================================
+local function UpdateHeadSize()
+    if State.Unloaded then return end
+    
+    -- Очистка размеров у вышедших игроков
+    for head, _ in pairs(OriginalHeadSizes) do
+        if not head or not head.Parent then
+            OriginalHeadSizes[head] = nil
+        end
+    end
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local head = p.Character:FindFirstChild("Head")
+            if head and head:IsA("BasePart") then
+                if not OriginalHeadSizes[head] then
+                    OriginalHeadSizes[head] = head.Size
+                end
+                
+                if Config.HeadSizeEnabled then
+                    local origSize = OriginalHeadSizes[head]
+                    local newSize = origSize * Config.HeadSizeValue
+                    if head.Size ~= newSize then
+                        pcall(function() head.Size = newSize end)
+                    end
+                else
+                    local origSize = OriginalHeadSizes[head]
+                    if head.Size ~= origSize then
+                        pcall(function() head.Size = origSize end)
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ============================================================================
+-- СИСТЕМА X-RAY
 -- ============================================================================
 local function ApplyXRay()
     if State.Unloaded then return end
@@ -97,7 +139,6 @@ local function ApplyXRay()
         
         for _, obj in pairs(workspace:GetDescendants()) do
             if obj:IsA("BasePart") then
-                -- Проверяем, не является ли объект игроком или оружием
                 local isCharacter = false
                 local parent = obj.Parent
                 while parent do
@@ -107,17 +148,13 @@ local function ApplyXRay()
                 end
                 
                 if not isCharacter then
-                    -- Проверяем дистанцию до объекта
                     local dist = (obj.Position - myPos).Magnitude
-                    
                     if dist <= Config.XRayDistance then
-                        -- Объект в радиусе - делаем прозрачным
                         if not OriginalTransparencies[obj] then
                             OriginalTransparencies[obj] = obj.LocalTransparencyModifier
                         end
                         pcall(function() obj.LocalTransparencyModifier = targetModifier end)
                     else
-                        -- Объект за радиусом - возвращаем как было
                         if OriginalTransparencies[obj] then
                             pcall(function() obj.LocalTransparencyModifier = OriginalTransparencies[obj] end)
                             OriginalTransparencies[obj] = nil
@@ -127,7 +164,6 @@ local function ApplyXRay()
             end
         end
     else
-        -- Восстанавливаем всё, если выключили
         for obj, origMod in pairs(OriginalTransparencies) do
             if obj and obj.Parent then
                 pcall(function() obj.LocalTransparencyModifier = origMod end)
@@ -137,18 +173,15 @@ local function ApplyXRay()
     end
 end
 
--- Запускаем обновление рентгена раз в 0.5 сек для оптимизации
 task.spawn(function()
     while not State.Unloaded do
-        if Config.XRayEnabled then
-            ApplyXRay()
-        end
+        if Config.XRayEnabled then ApplyXRay() end
         task.wait(0.5)
     end
 end)
 
 -- ============================================================================
--- ПОИСК И СОКРАЩЕНИЕ ОРУЖИЯ
+-- ОРУЖИЕ
 -- ============================================================================
 local function GetWeaponName(character)
     local tool = character:FindFirstChildOfClass("Tool")
@@ -268,9 +301,9 @@ local function AddNotification(amount)
     end)
 end
 
--- Главное меню (Увеличено по высоте)
+-- Главное меню (Высота увеличена до 520)
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 520, 0, 460); Main.Position = UDim2.new(0.5, -260, 0.5, -230); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
+Main.Size = UDim2.new(0, 520, 0, 520); Main.Position = UDim2.new(0.5, -260, 0.5, -260); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0, 8); MainCorner.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(45, 45, 60); MainStroke.Thickness = 2; MainStroke.Parent = Main
 
@@ -367,7 +400,6 @@ CreateSlider(PageVisuals, "Wall Transparency (0-100)", 0, 100, Config.XRayValue,
     if Config.XRayEnabled then ApplyXRay() end
 end)
 
--- НОВЫЙ СЛАЙДЕР ДИСТАНЦИИ X-RAY
 CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, 190, function(v) 
     Config.XRayDistance = v 
     if Config.XRayEnabled then ApplyXRay() end
@@ -376,6 +408,20 @@ end)
 CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 235, function(v) Config.DamageNumbers = v end)
 CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 270, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
 CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 305, function(v) Config.ESPMaxDist = v end)
+
+-- НОВЫЕ ФУНКЦИИ: РАЗМЕР ГОЛОВЫ
+CreateToggle(PageVisuals, "Head Expander (Hitbox)", Config.HeadSizeEnabled, 340, function(v) 
+    Config.HeadSizeEnabled = v 
+    if not v then
+        -- Если выключаем, сразу возвращаем стандартный размер
+        for head, origSize in pairs(OriginalHeadSizes) do
+            if head and head.Parent then pcall(function() head.Size = origSize end) end
+        end
+    end
+end)
+CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 375, function(v) 
+    Config.HeadSizeValue = v 
+end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
 CreateToggle(PageMisc, "Fullbright (Свет)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyLighting() end)
@@ -414,10 +460,16 @@ local function FullCleanup()
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     DamagePopups = {}
     
+    -- Восстанавливаем стены и головы
     for obj, origMod in pairs(OriginalTransparencies) do
         if obj and obj.Parent then pcall(function() obj.LocalTransparencyModifier = origMod end) end
     end
     OriginalTransparencies = {}
+    
+    for head, origSize in pairs(OriginalHeadSizes) do
+        if head and head.Parent then pcall(function() head.Size = origSize end) end
+    end
+    OriginalHeadSizes = {}
     
     pcall(function() keyrelease(Enum.KeyCode.LeftShift) end)
     pcall(function()
@@ -425,7 +477,7 @@ local function FullCleanup()
         Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
         Lighting.GlobalShadows = true; Lighting.FogEnd = 1000
     end)
-    print("[pisunRust v2] Unloaded. Walls restored.")
+    print("[pisunRust v2] Unloaded. Walls & Heads restored.")
 end
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, FullCleanup, Color3.fromRGB(150, 30, 30))
 
@@ -479,7 +531,7 @@ local function TrackPlayer(p)
                         if onScreen and screenPos.Z > 0 then
                             local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
                             local distToCenter = (center - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
-                            if distToCenter < 250 then
+                            if distToCenter < 300 then -- Чуть увеличил радиус, так как голова теперь больше
                                 SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false)
                                 AddNotification(dmg) 
                             end
@@ -536,6 +588,7 @@ end
 Players.PlayerRemoving:Connect(function(p)
     CleanupESP(p)
     if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end
+    if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end
 end)
 
 local function UpdateESP()
@@ -687,6 +740,9 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
     
+    -- Применяем размер головы каждый кадр (если включено)
+    if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
+    
     State.Frames = State.Frames + 1
     State.Time = State.Time + deltaTime
     if State.Time >= 1 then
@@ -743,4 +799,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V27 Loaded. X-Ray distance active.")
+print("[pisunRust v2] V28 Loaded. Head Expander active.")
