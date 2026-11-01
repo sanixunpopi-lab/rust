@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V36 - CLEAN CHAMS)
+    pisunRust v2 - OMNIX FRAMEWORK (V37 - HANDS & ITEMS CHAMS ONLY)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -27,7 +27,6 @@ local Config = {
     ESPEnabled = true,
     ESPMaxDist = 1000,
     ESPWeapon = true,
-    ChamsEnabled = true,
     DamageNumbers = true,
     ShowDamageLog = true,
     
@@ -43,7 +42,7 @@ local Config = {
     OptParticles = false,    
     OptGraphics = false,     
     
-    -- ЧАМСЫ
+    -- ЧАМСЫ (ТОЛЬКО РУКИ И ПРЕДМЕТЫ)
     HandChamsEnabled = false,
     ItemChamsEnabled = false,
     RainbowChams = false,
@@ -57,7 +56,6 @@ local Config = {
 local Binds = {
     Aimbot = Enum.UserInputType.MouseButton2,
     ESP = Enum.KeyCode.E,
-    Chams = Enum.KeyCode.C,
     Sprint = Enum.KeyCode.Z
 }
 
@@ -74,7 +72,6 @@ local State = {
 }
 
 local ESPObjects = {}
-local ChamsObjects = {}
 local ItemChamsObjects = {}
 local HandChamsObject = nil
 local DamagePopups = {}
@@ -103,7 +100,7 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- СИСТЕМА ЧАМСОВ (РУКИ И ПРЕДМЕТЫ)
+-- СИСТЕМА ЧАМСОВ (ТОЛЬКО РУКИ И ПРЕДМЕТЫ)
 -- ============================================================================
 local function ApplyChamsColor(highlight)
     if Config.RainbowChams then
@@ -112,8 +109,8 @@ local function ApplyChamsColor(highlight)
         highlight.FillColor = color
         highlight.OutlineColor = color
     else
-        highlight.FillColor = Color3.fromRGB(0, 150, 255)
-        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.FillColor = Color3.fromRGB(0, 150, 255) -- Синий
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255) -- Белая обводка
     end
 end
 
@@ -141,25 +138,28 @@ end
 local function UpdateItemChams()
     if State.Unloaded then return end
     
+    -- Очистка старых / далеких предметов
     for item, chams in pairs(ItemChamsObjects) do
         if not item or not item.Parent or not Config.ItemChamsEnabled then
             chams:Destroy()
             ItemChamsObjects[item] = nil
         else
             local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if myRoot and (item.Position - myRoot.Position).Magnitude > 100 then
+            local itemPart = item:IsA("BasePart") and item or item:FindFirstChildWhichIsA("BasePart")
+            if myRoot and itemPart and (itemPart.Position - myRoot.Position).Magnitude > 100 then
                 chams:Destroy()
                 ItemChamsObjects[item] = nil
             end
         end
     end
 
+    -- Поиск новых (в радиусе 100 метров)
     if Config.ItemChamsEnabled then
         local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not myRoot then return end
 
         for _, obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("Tool") or (obj:IsA("Model") and (string.find(string.lower(obj.Name), "weapon") or string.find(string.lower(obj.Name), "crate") or string.find(string.lower(obj.Name), "loot"))) then
+            if obj:IsA("Tool") or (obj:IsA("Model") and (string.find(string.lower(obj.Name), "weapon") or string.find(string.lower(obj.Name), "crate") or string.find(string.lower(obj.Name), "loot") or string.find(string.lower(obj.Name), "item"))) then
                 if not ItemChamsObjects[obj] then
                     local part = obj:FindFirstChildWhichIsA("BasePart")
                     if part and (part.Position - myRoot.Position).Magnitude <= 100 then
@@ -175,6 +175,7 @@ local function UpdateItemChams()
         end
     end
     
+    -- Обновление цвета
     for _, chams in pairs(ItemChamsObjects) do
         ApplyChamsColor(chams)
     end
@@ -457,19 +458,18 @@ CreateSlider(PageAimbot, "FOV Size", 30, 400, Config.FOV, 70, function(v) Config
 CreateSlider(PageAimbot, "Smoothness", 1, 100, Config.Smoothness * 100, 120, function(v) Config.Smoothness = v / 100 end)
 local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 170, function() Config.AimbotMethod = (Config.AimbotMethod == "Camera") and "Mouse" or "Camera"; methodBtn.Text = "Method: " .. Config.AimbotMethod end)
 
--- Visuals Tab
+-- Visuals Tab (Убран Player Chams)
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
 CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
-CreateToggle(PageVisuals, "Player Chams", Config.ChamsEnabled, 70, function(v) Config.ChamsEnabled = v end)
-CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, 105, function(v) Config.XRayEnabled = v; ApplyXRay() end)
-CreateSlider(PageVisuals, "Wall Transparency (0-100)", 0, 100, Config.XRayValue, 140, function(v) Config.XRayValue = v; if Config.XRayEnabled then ApplyXRay() end end)
-CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, 190, function(v) Config.XRayDistance = v; if Config.XRayEnabled then ApplyXRay() end end)
-CreateToggle(PageVisuals, "Head Expander (Hitbox)", Config.HeadSizeEnabled, 235, function(v) Config.HeadSizeEnabled = v; if not v then for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end end end)
-CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 270, function(v) Config.HeadSizeValue = v end)
-CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 315, function(v) Config.DamageNumbers = v end)
-CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 350, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
+CreateToggle(PageVisuals, "X-Ray Walls (Стены)", Config.XRayEnabled, 70, function(v) Config.XRayEnabled = v; ApplyXRay() end)
+CreateSlider(PageVisuals, "Wall Transparency (0-100)", 0, 100, Config.XRayValue, 105, function(v) Config.XRayValue = v; if Config.XRayEnabled then ApplyXRay() end end)
+CreateSlider(PageVisuals, "X-Ray Distance", 100, 1500, Config.XRayDistance, 155, function(v) Config.XRayDistance = v; if Config.XRayEnabled then ApplyXRay() end end)
+CreateToggle(PageVisuals, "Head Expander (Hitbox)", Config.HeadSizeEnabled, 200, function(v) Config.HeadSizeEnabled = v; if not v then for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end end end)
+CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 235, function(v) Config.HeadSizeValue = v end)
+CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 280, function(v) Config.DamageNumbers = v end)
+CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 315, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
 
--- CHAMS TAB
+-- CHAMS TAB (ТОЛЬКО РУКИ И ПРЕДМЕТЫ)
 CreateToggle(PageChams, "Hands Chams (Руки)", Config.HandChamsEnabled, 0, function(v) Config.HandChamsEnabled = v end)
 CreateToggle(PageChams, "Item Chams (Предметы)", Config.ItemChamsEnabled, 35, function(v) Config.ItemChamsEnabled = v end)
 CreateToggle(PageChams, "Rainbow Color (Радуга)", Config.RainbowChams, 70, function(v) Config.RainbowChams = v end)
@@ -492,7 +492,6 @@ local function CreateBindButton(parent, text, bindName, posY)
 end
 CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
 CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
-CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
 
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
 
@@ -507,8 +506,6 @@ local function FullCleanup()
     pcall(function() FOVCircle:Remove() end)
     for p, esp in pairs(ESPObjects) do pcall(function() esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove() end) end
     ESPObjects = {}
-    for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
-    ChamsObjects = {}
     for item, chams in pairs(ItemChamsObjects) do pcall(function() chams:Destroy() end) end
     ItemChamsObjects = {}
     if HandChamsObject then pcall(function() HandChamsObject:Destroy() end); HandChamsObject = nil end
@@ -584,7 +581,7 @@ local function CleanupESP(p)
     if ESPObjects[p] then local esp = ESPObjects[p]; pcall(function() esp.Box1:Remove(); esp.Box2:Remove(); esp.Box3:Remove(); esp.Box4:Remove(); esp.Name:Remove(); esp.Dist:Remove(); esp.HealthBarBg:Remove(); esp.HealthBarFill:Remove(); esp.Weapon:Remove() end); ESPObjects[p] = nil end
 end
 
-Players.PlayerRemoving:Connect(function(p) CleanupESP(p); if ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end; if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end end)
+Players.PlayerRemoving:Connect(function(p) CleanupESP(p); if p.Character and p.Character:FindFirstChild("Head") then OriginalHeadSizes[p.Character.Head] = nil end end)
 
 local function UpdateESP()
     if State.Unloaded then return end
@@ -599,10 +596,6 @@ local function UpdateESP()
             if hum.Health > 0 and hrp and head then
                 local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); local dist = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
                 if dist <= Config.ESPMaxDist then
-                    if Config.ChamsEnabled then
-                        if not ChamsObjects[p] or ChamsObjects[p].Parent ~= p.Character then if ChamsObjects[p] then pcall(function() ChamsObjects[p]:Destroy() end) end; local chams = Instance.new("Highlight"); chams.FillTransparency = 0.5; chams.OutlineTransparency = 0; chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; chams.Parent = p.Character; ChamsObjects[p] = chams end
-                        local chams = ChamsObjects[p]; if tick() - (chams:GetAttribute("LastCheck") or 0) > 0.1 then chams:SetAttribute("LastCheck", tick()); if IsVisible(p.Character) then chams.FillColor = Color3.fromRGB(0, 255, 0); chams.OutlineColor = Color3.fromRGB(0, 255, 0) else chams.FillColor = Color3.fromRGB(255, 0, 0); chams.OutlineColor = Color3.fromRGB(255, 255, 255) end end
-                    elseif ChamsObjects[p] then pcall(function() ChamsObjects[p]:Destroy() end); ChamsObjects[p] = nil end
                     if Config.ESPEnabled then
                         if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
                         local esp = ESPObjects[p]; local screenHead, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0)); local screenRoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
@@ -657,7 +650,6 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
     if gameProcessed then return end
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = true
     elseif input.UserInputType == Binds.ESP or input.KeyCode == Binds.ESP then Config.ESPEnabled = not Config.ESPEnabled
-    elseif input.UserInputType == Binds.Chams or input.KeyCode == Binds.Chams then Config.ChamsEnabled = not Config.ChamsEnabled
     elseif input.UserInputType == Binds.Sprint or input.KeyCode == Binds.Sprint then Config.AutoSprint = not Config.AutoSprint end
 end))
 
@@ -671,7 +663,7 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
     
-    -- Чамсы
+    -- Чамсы (Только руки и предметы)
     if Config.HandChamsEnabled then pcall(UpdateHandChams) elseif HandChamsObject then HandChamsObject:Destroy(); HandChamsObject = nil end
     if Config.ItemChamsEnabled or Config.RainbowChams then pcall(UpdateItemChams) end
     
@@ -680,10 +672,10 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nHand Chams: %s | Item Chams: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.HandChamsEnabled and "ON" or "OFF", Config.ItemChamsEnabled and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nHands: %s | Items: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.HandChamsEnabled and "ON" or "OFF", Config.ItemChamsEnabled and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
-    if Config.ESPEnabled or Config.ChamsEnabled then pcall(UpdateESP) end
+    if Config.ESPEnabled then pcall(UpdateESP) end
 
     for i = #DamagePopups, 1, -1 do local popup = DamagePopups[i]; popup.Life = popup.Life - 0.02; popup.CurrentY = popup.CurrentY - 1.5; popup.Text.Position = Vector2.new(popup.Text.Position.X, popup.CurrentY); popup.Text.Transparency = popup.Life; if popup.Life <= 0 then pcall(function() popup.Text:Remove() end); table.remove(DamagePopups, i) end end
 
@@ -699,4 +691,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V36 Loaded. Pure Chams Edition (No Cosmetics).")
+print("[pisunRust v2] V37 Loaded. Hands & Items Chams only.")
