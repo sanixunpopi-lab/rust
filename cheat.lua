@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V49 - ULTRA SHAKAL LAG FIX)
+    pisunRust v2 - OMNIX FRAMEWORK (V50 - GREY TEXTURES MODE)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -51,7 +51,7 @@ local Config = {
     OptTextures = false,     
     OptParticles = false,    
     OptGraphics = false,     
-    UltraShakalMode = false, 
+    UltraShakalMode = false, -- Серые текстуры
     
     AutoSprint = false,
     Fullbright = false,
@@ -143,120 +143,61 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ULTRA SHAKAL OPTIMIZATION (1 ЦВЕТ) - БЕЗ ЛАГОВ
+-- СЕРЫЕ ТЕКСТУРЫ (БЕЗ ЛАГОВ)
 -- ============================================================================
-local function ApplyUltraOptimization()
-    if State.Unloaded or not Config.UltraShakalMode then return end
+local function GreyObject(obj)
+    if not obj or not obj.Parent then return end
     
-    -- Отключаем свет
-    for _, v in pairs(Lighting:GetChildren()) do
-        if v:IsA("BloomEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("DepthOfFieldEffect") then
-            if not OriginalUltraProps[v] then OriginalUltraProps[v] = {Enabled = v.Enabled} end
-            v.Enabled = false
-        end
-    end
-    
-    -- Пробегаемся по всем объектам ОДИН РАЗ
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            if not OriginalUltraProps[obj] then 
-                OriginalUltraProps[obj] = {
-                    Color = obj.Color, 
-                    Material = obj.Material, 
-                    CastShadow = obj.CastShadow, 
-                    Transparency = obj.Transparency,
-                    TextureID = obj:IsA("MeshPart") and obj.TextureID or nil
-                } 
-            end
-            
-            obj.Color = Color3.fromRGB(163, 162, 165) 
-            obj.Material = Enum.Material.SmoothPlastic
-            obj.CastShadow = false
-            
-            if obj:IsA("MeshPart") and obj.TextureID ~= "" then
-                obj.TextureID = ""
-            end
-            
-        elseif obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
-            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Transparency = obj.Transparency, Enabled = obj.Enabled} end
-            if obj:IsA("SurfaceAppearance") then obj.Enabled = false else obj.Transparency = 1 end
-            
-        elseif obj:IsA("Trail") or obj:IsA("Beam") then
-            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
-            obj.Enabled = false
-        elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
-            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
-            obj.Enabled = false
-        elseif obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
-            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
-            obj.Enabled = false
-        elseif obj:IsA("Accessory") then
-            local handle = obj:FindFirstChildWhichIsA("BasePart")
-            if handle then
-                if not OriginalUltraProps[handle] then OriginalUltraProps[handle] = {Transparency = handle.Transparency} end
-                handle.Transparency = 1
-            end
-        end
-    end
-    
-    local terrain = workspace:FindFirstChildOfClass("Terrain")
-    if terrain then
-        terrain.WaterWaveSize = 0
-        terrain.WaterWaveSpeed = 0
-        terrain.WaterReflectance = 0
-        terrain.WaterTransparency = 1
+    if obj:IsA("BasePart") then
+        if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Color = obj.Color} end
+        obj.Color = Color3.fromRGB(163, 162, 165) -- Серый
+    elseif obj:IsA("Decal") or obj:IsA("Texture") then
+        if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Transparency = obj.Transparency} end
+        obj.Transparency = 1
+    elseif obj:IsA("SurfaceAppearance") then
+        if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
+        obj.Enabled = false
     end
 end
 
-local function RestoreUltraOptimization()
+local function ApplyGreyTextures()
+    if State.Unloaded or not Config.UltraShakalMode then return end
+    
+    -- Делаем это в фоне (task.spawn), чтобы не было фризов
+    task.spawn(function()
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if not Config.UltraShakalMode or State.Unloaded then break end
+            GreyObject(obj)
+        end
+    end)
+end
+
+local function RestoreGreyTextures()
     for obj, props in pairs(OriginalUltraProps) do
         if obj and obj.Parent then
             pcall(function()
                 if props.Color ~= nil then obj.Color = props.Color end
-                if props.Material ~= nil then obj.Material = props.Material end
-                if props.CastShadow ~= nil then obj.CastShadow = props.CastShadow end
                 if props.Transparency ~= nil then obj.Transparency = props.Transparency end
-                if props.TextureID ~= nil then obj.TextureID = props.TextureID end
                 if props.Enabled ~= nil then obj.Enabled = props.Enabled end
             end)
         end
     end
     OriginalUltraProps = {}
-    
-    local terrain = workspace:FindFirstChildOfClass("Terrain")
-    if terrain then
-        terrain.WaterWaveSize = 0.15
-        terrain.WaterWaveSpeed = 10
-        terrain.WaterReflectance = 0.1
-        terrain.WaterTransparency = 0.1
-    end
 end
 
--- Слушаем новые объекты (чтобы новые текстуры не появлялись)
+-- Слушаем новые объекты, чтобы они сразу были серыми
 workspace.DescendantAdded:Connect(function(obj)
     if Config.UltraShakalMode and not State.Unloaded then
-        if obj:IsA("BasePart") then
-            obj.Color = Color3.fromRGB(163, 162, 165)
-            obj.Material = Enum.Material.SmoothPlastic
-            obj.CastShadow = false
-            if obj:IsA("MeshPart") then obj.TextureID = "" end
-        elseif obj:IsA("Decal") or obj:IsA("Texture") then
-            obj.Transparency = 1
-        elseif obj:IsA("SurfaceAppearance") then
-            obj.Enabled = false
-        elseif obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") then
-            obj.Enabled = false
-        end
+        GreyObject(obj)
     end
 end)
 
 -- ============================================================================
--- ITEM ESP (ОПТИМИЗИРОВАНО: СКАН РАЗ В 0.5 СЕК)
+-- ITEM ESP
 -- ============================================================================
 local function UpdateItemESP()
     if State.Unloaded then return end
     
-    -- Очистка мертвых
     for item, esp in pairs(ItemESPObjects) do
         if not item or not item.Parent or not Config.ItemESPEnabled then
             esp.Box:Remove(); esp.Text:Remove()
@@ -273,7 +214,6 @@ local function UpdateItemESP()
 
     if not Config.ItemESPEnabled then return end
     
-    -- Отрисовка того, что уже нашли
     for item, esp in pairs(ItemESPObjects) do
         local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if myRoot and esp.Part then
@@ -292,7 +232,6 @@ local function UpdateItemESP()
         end
     end
 
-    -- Сканируем карту ТОЛЬКО раз в 0.5 секунды (Фикс лагов)
     if tick() - State.LastItemScan > 0.5 then
         State.LastItemScan = tick()
         local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -329,53 +268,6 @@ local function UpdateItemESP()
             end
         end
     end
-end
-
--- ============================================================================
--- БАЗОВЫЙ ОПТИМИЗАТОР
--- ============================================================================
-local function OptimizeObject(obj)
-    if not Config.OptTextures and not Config.OptParticles and not Config.OptGraphics then return end
-    if not obj or not obj.Parent then return end
-    
-    if Config.OptTextures then
-        if obj:IsA("Decal") or obj:IsA("Texture") then
-            if not OriginalProps[obj] then OriginalProps[obj] = {Transparency = obj.Transparency} end
-            pcall(function() obj.Transparency = 1 end)
-        end
-    end
-    
-    if Config.OptParticles then
-        if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
-            if not OriginalProps[obj] then OriginalProps[obj] = {Enabled = obj.Enabled} end
-            pcall(function() obj.Enabled = false end)
-        end
-    end
-    
-    if Config.OptGraphics then
-        if obj:IsA("BasePart") then
-            if not OriginalProps[obj] then OriginalProps[obj] = {Material = obj.Material, CastShadow = obj.CastShadow} end
-            pcall(function() obj.Material = Enum.Material.SmoothPlastic; obj.CastShadow = false end)
-        end
-    end
-end
-
-local function ApplyOptimization()
-    if State.Unloaded then return end
-    for _, obj in pairs(workspace:GetDescendants()) do OptimizeObject(obj) end
-end
-
-local function RestoreOptimization()
-    for obj, props in pairs(OriginalProps) do
-        if obj and obj.Parent then
-            pcall(function()
-                if props.Transparency ~= nil then obj.Transparency = props.Transparency end
-                if props.Enabled ~= nil then obj.Enabled = props.Enabled end
-                if props.Material ~= nil then obj.Material = props.Material; obj.CastShadow = props.CastShadow end
-            end)
-        end
-    end
-    OriginalProps = {}
 end
 
 -- ============================================================================
@@ -652,9 +544,9 @@ CreateToggle(PageVisuals, "Head Expander", Config.HeadSizeEnabled, function(v) C
 CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, function(v) Config.HeadSizeValue = v end)
 
 -- Optimizer
-CreateToggle(PageOptimizer, "ULTRA SHAKAL MODE (1 Color)", Config.UltraShakalMode, function(v) 
+CreateToggle(PageOptimizer, "GREY TEXTURES (Серые текстуры)", Config.UltraShakalMode, function(v) 
     Config.UltraShakalMode = v
-    if v then ApplyUltraOptimization() else RestoreUltraOptimization() end
+    if v then ApplyGreyTextures() else RestoreGreyTextures() end
 end)
 CreateToggle(PageOptimizer, "Shakal Textures", Config.OptTextures, function(v) Config.OptTextures = v; if v then ApplyOptimization() else RestoreOptimization() end end)
 CreateToggle(PageOptimizer, "Remove Particles", Config.OptParticles, function(v) Config.OptParticles = v; if v then ApplyOptimization() else RestoreOptimization() end end)
@@ -705,7 +597,7 @@ local function FullCleanup()
     OriginalHeadSizes = {}
     
     RestoreOptimization() 
-    RestoreUltraOptimization()
+    RestoreGreyTextures()
     
     pcall(function() keyrelease(Enum.KeyCode.LeftShift) end)
     pcall(function() Lighting.ClockTime = 14; Lighting.Brightness = 1; Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128); Lighting.GlobalShadows = true; Lighting.FogEnd = 1000 end)
@@ -954,14 +846,14 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
-    if Config.ItemESPEnabled then pcall(UpdateItemESP) end -- Обновление рентгена предметов (внутри ограничено 0.5 сек)
+    if Config.ItemESPEnabled then pcall(UpdateItemESP) end 
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
     if State.Time >= 1 then State.FPS = math.floor(State.Frames / State.Time); State.Frames = 0; State.Time = 0 end
 
     State.RainbowHue = (State.RainbowHue + 0.005) % 1; local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
     TitleLabel.TextColor3 = RainbowColor; FPSLabel.Text = "FPS: " .. State.FPS; FPSLabel.TextColor3 = RainbowColor; FeaturesLabel.TextColor3 = RainbowColor
-    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nShakal: %s | Item ESP: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.UltraShakalMode and "ON" or "OFF", Config.ItemESPEnabled and "ON" or "OFF")
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nGrey: %s | Item ESP: %s", Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF", Config.UltraShakalMode and "ON" or "OFF", Config.ItemESPEnabled and "ON" or "OFF")
 
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2); FOVCircle.Radius = Config.FOV; FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
     if Config.ESPEnabled or Config.PlayerChamsEnabled then pcall(UpdateESP) end
@@ -980,4 +872,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V49 Loaded. Ultra Shakal Lag Fixed.")
+print("[pisunRust v2] V50 Loaded. Grey Textures active.")
