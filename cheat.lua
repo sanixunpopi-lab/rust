@@ -1,6 +1,4 @@
--- RUST CLONE CHEAT - V8 (Жесткий фикс Аима и ESP)
--- Меню: ПРАВЫЙ SHIFT (RightShift)
-
+-- RUST CLONE CHEAT - V9 (Рабочий аим через камеру)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -13,10 +11,10 @@ local aimbotEnabled = true
 local espEnabled = true
 local chamsEnabled = true
 local autoSprintEnabled = false
-local predictionEnabled = true
+local predictionEnabled = false -- ВЫКЛЮЧЕНО: чтобы наводка была точной
 local visibleAimEnabled = false 
 local circleRadius = 120       
-local smoothness = 0.50         
+local smoothness = 0.30         
 local activationKey = Enum.UserInputType.MouseButton2
 local menuKey = Enum.KeyCode.RightShift
 
@@ -26,12 +24,10 @@ local fovOffsetY = -5
 local holdingKey = false
 local isMenuOpen = true
 local isSprinting = false
-
 local CONFIG_FILE = "RustCheat_Config.json"
 
 -- ================= БЕЗОПАСНОЕ UI =================
 local _guiParent = gethui and gethui() or game:GetService("CoreGui")
-
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "RustCheatUI"
 ScreenGui.Parent = _guiParent
@@ -53,7 +49,7 @@ Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 18
 
--- ================= FOV КРУГ =================
+-- FOV Круг
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 2
 fovCircle.NumSides = 100 
@@ -63,7 +59,7 @@ fovCircle.Filled = false
 fovCircle.Visible = false
 fovCircle.Transparency = 0.8
 
--- ================= ПЕРЕМЕННЫЕ UI =================
+-- Переменные UI
 local espBtn, aimBtn, chamsBtn, sprintBtn, predBtn, visAimBtn, fovLabel, smoothLabel, offsetLabel, offsetXLabel, bindBtn
 local waitingForKey = false
 
@@ -146,10 +142,9 @@ end
 espBtn = createBtn("ESP: OFF", UDim2.new(0.05, 0, 0.08, 0), UDim2.new(0.28, 0, 0, 35), function() espEnabled = not espEnabled; updateUI() end)
 aimBtn = createBtn("Aimbot: OFF", UDim2.new(0.36, 0, 0.08, 0), UDim2.new(0.28, 0, 0, 35), function() aimbotEnabled = not aimbotEnabled; updateUI() end)
 visAimBtn = createBtn("Vis Aim: OFF", UDim2.new(0.67, 0, 0.08, 0), UDim2.new(0.28, 0, 0, 35), function() visibleAimEnabled = not visibleAimEnabled; updateUI() end)
-
 chamsBtn = createBtn("Chams: OFF", UDim2.new(0.05, 0, 0.16, 0), UDim2.new(0.28, 0, 0, 35), function() chamsEnabled = not chamsEnabled; updateUI() end)
 sprintBtn = createBtn("Sprint: OFF", UDim2.new(0.36, 0, 0.16, 0), UDim2.new(0.28, 0, 0, 35), function() autoSprintEnabled = not autoSprintEnabled; updateUI() end)
-predBtn = createBtn("Prediction: ON", UDim2.new(0.67, 0, 0.16, 0), UDim2.new(0.28, 0, 0, 35), function() predictionEnabled = not predictionEnabled; updateUI() end)
+predBtn = createBtn("Prediction: OFF", UDim2.new(0.67, 0, 0.16, 0), UDim2.new(0.28, 0, 0, 35), function() predictionEnabled = not predictionEnabled; updateUI() end)
 
 fovLabel = Instance.new("TextLabel", Frame); fovLabel.Size = UDim2.new(0.4, 0, 0, 35); fovLabel.Position = UDim2.new(0.05, 0, 0.25, 0); fovLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35); fovLabel.TextColor3 = Color3.fromRGB(255, 255, 255); fovLabel.Font = Enum.Font.SourceSansBold; fovLabel.TextSize = 15
 createBtn("-", UDim2.new(0.45, 0, 0.25, 0), UDim2.new(0.22, 0, 0, 35), function() circleRadius = math.max(30, circleRadius - 10); updateUI() end)
@@ -191,7 +186,7 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
     if input.UserInputType == activationKey or input.KeyCode == activationKey then holdingKey = false end
 end)
 
--- ================= ESP (БЕЗ ЛАГОВ И ПРИЗРАКОВ) =================
+-- ================= ESP & CHAMS =================
 local espObjects = {}
 local chamsObjects = {}
 local maxESPDistance = 800 
@@ -209,48 +204,17 @@ end
 
 local function createESP(p)
     local esp = {}
-    
-    -- Квадрат
-    esp.Box = Drawing.new("Square")
-    esp.Box.Thickness = 1
-    esp.Box.Color = Color3.fromRGB(255, 50, 50)
-    esp.Box.Filled = false
-    esp.Box.Visible = false
-
-    -- Имя
-    esp.Name = Drawing.new("Text")
-    esp.Name.Size = 14
-    esp.Name.Center = true
-    esp.Name.Outline = true
-    esp.Name.Color = Color3.fromRGB(255, 255, 255)
-    esp.Name.Visible = false
-
-    -- Здоровье
-    esp.Health = Drawing.new("Text")
-    esp.Health.Size = 12
-    esp.Health.Center = true
-    esp.Health.Outline = true
-    esp.Health.Color = Color3.fromRGB(0, 255, 0)
-    esp.Health.Visible = false
-
-    -- Дистанция
-    esp.Dist = Drawing.new("Text")
-    esp.Dist.Size = 12
-    esp.Dist.Center = true
-    esp.Dist.Outline = true
-    esp.Dist.Color = Color3.fromRGB(255, 200, 0)
-    esp.Dist.Visible = false
-
+    esp.Box = Drawing.new("Square"); esp.Box.Thickness = 1; esp.Box.Color = Color3.fromRGB(255, 50, 50); esp.Box.Filled = false; esp.Box.Visible = false
+    esp.Name = Drawing.new("Text"); esp.Name.Size = 14; esp.Name.Center = true; esp.Name.Outline = true; esp.Name.Color = Color3.fromRGB(255, 255, 255); esp.Name.Visible = false
+    esp.Health = Drawing.new("Text"); esp.Health.Size = 12; esp.Health.Center = true; esp.Health.Outline = true; esp.Health.Color = Color3.fromRGB(0, 255, 0); esp.Health.Visible = false
+    esp.Dist = Drawing.new("Text"); esp.Dist.Size = 12; esp.Dist.Center = true; esp.Dist.Outline = true; esp.Dist.Color = Color3.fromRGB(255, 200, 0); esp.Dist.Visible = false
     return esp
 end
 
 local function updateESP()
     for _, p in pairs(Players:GetPlayers()) do
-        -- Если это мы, или игрок умер/вышел
         if p == player or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
-            if espObjects[p] then
-                espObjects[p].Box.Visible = false; espObjects[p].Name.Visible = false; espObjects[p].Health.Visible = false; espObjects[p].Dist.Visible = false
-            end
+            if espObjects[p] then espObjects[p].Box.Visible = false; espObjects[p].Name.Visible = false; espObjects[p].Health.Visible = false; espObjects[p].Dist.Visible = false end
             if chamsObjects[p] then chamsObjects[p]:Destroy(); chamsObjects[p] = nil end
             continue
         end
@@ -258,69 +222,45 @@ local function updateESP()
         local hum = p.Character.Humanoid
         local hrp = p.Character:FindFirstChild("HumanoidRootPart")
         local head = p.Character:FindFirstChild("Head")
-
         if not hrp or not head then continue end
         
         local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         local distVal = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
 
         if distVal > maxESPDistance then
-            if espObjects[p] then
-                espObjects[p].Box.Visible = false; espObjects[p].Name.Visible = false; espObjects[p].Health.Visible = false; espObjects[p].Dist.Visible = false
-            end
+            if espObjects[p] then espObjects[p].Box.Visible = false; espObjects[p].Name.Visible = false; espObjects[p].Health.Visible = false; espObjects[p].Dist.Visible = false end
             if chamsObjects[p] then chamsObjects[p]:Destroy(); chamsObjects[p] = nil end
             continue
         end
 
-        -- Chams
         if chamsEnabled then
             if not chamsObjects[p] or chamsObjects[p].Parent ~= p.Character then
                 if chamsObjects[p] then chamsObjects[p]:Destroy() end
                 local chams = Instance.new("Highlight")
-                chams.FillTransparency = 0.5; chams.OutlineTransparency = 0; chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                chams.Parent = p.Character
+                chams.FillTransparency = 0.5; chams.OutlineTransparency = 0; chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; chams.Parent = p.Character
                 chams:SetAttribute("LastCheck", 0); chamsObjects[p] = chams
             end
             local chams = chamsObjects[p]
             if tick() - chams:GetAttribute("LastCheck") > 0.1 then
                 chams:SetAttribute("LastCheck", tick())
-                if isVisible(p.Character) then
-                    chams.FillColor = Color3.fromRGB(0, 255, 0); chams.OutlineColor = Color3.fromRGB(0, 255, 0)
-                else
-                    chams.FillColor = Color3.fromRGB(255, 0, 0); chams.OutlineColor = Color3.fromRGB(255, 255, 255)
-                end
+                if isVisible(p.Character) then chams.FillColor = Color3.fromRGB(0, 255, 0); chams.OutlineColor = Color3.fromRGB(0, 255, 0)
+                else chams.FillColor = Color3.fromRGB(255, 0, 0); chams.OutlineColor = Color3.fromRGB(255, 255, 255) end
             end
-        elseif chamsObjects[p] then 
-            chamsObjects[p]:Destroy(); chamsObjects[p] = nil 
-        end
+        elseif chamsObjects[p] then chamsObjects[p]:Destroy(); chamsObjects[p] = nil end
 
-        -- ESP Text
         if espEnabled then
             if not espObjects[p] then espObjects[p] = createESP(p) end
             local esp = espObjects[p]
-            
             local headScreen, onScreen = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
             local rootScreen = camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 2.5, 0))
 
             if onScreen then
                 local height = math.abs(headScreen.Y - rootScreen.Y)
                 local width = height * 0.5 
-                
-                esp.Box.Size = Vector2.new(width, height)
-                esp.Box.Position = Vector2.new(headScreen.X - (width / 2), headScreen.Y)
-                esp.Box.Visible = true
-                
-                esp.Name.Text = p.Name
-                esp.Name.Position = Vector2.new(headScreen.X, headScreen.Y - 32)
-                esp.Name.Visible = true
-                
-                esp.Health.Text = "HP: " .. math.floor(hum.Health)
-                esp.Health.Position = Vector2.new(headScreen.X, headScreen.Y + height + 2)
-                esp.Health.Visible = true
-                
-                esp.Dist.Text = "[" .. distVal .. "m]"
-                esp.Dist.Position = Vector2.new(headScreen.X, headScreen.Y - 18)
-                esp.Dist.Visible = true
+                esp.Box.Size = Vector2.new(width, height); esp.Box.Position = Vector2.new(headScreen.X - (width / 2), headScreen.Y); esp.Box.Visible = true
+                esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(headScreen.X, headScreen.Y - 32); esp.Name.Visible = true
+                esp.Health.Text = "HP: " .. math.floor(hum.Health); esp.Health.Position = Vector2.new(headScreen.X, headScreen.Y + height + 2); esp.Health.Visible = true
+                esp.Dist.Text = "[" .. distVal .. "m]"; esp.Dist.Position = Vector2.new(headScreen.X, headScreen.Y - 18); esp.Dist.Visible = true
             else
                 esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false
             end
@@ -330,7 +270,7 @@ local function updateESP()
     end
 end
 
--- ================= АИМ (mousemoverel) =================
+-- ================= АИМ (ЖЕСТКАЯ КАМЕРА) =================
 local function getTarget()
     local closestPart = nil
     local shortestDist = circleRadius
@@ -342,16 +282,13 @@ local function getTarget()
             local hum = p.Character.Humanoid
             local hrp = p.Character:FindFirstChild("HumanoidRootPart")
             local head = p.Character:FindFirstChild("Head")
-            
             if hum.Health > 0 and hrp and head then
                 local targetPos = (head.Position + hrp.Position) / 2 
                 local screenPos, onScreen = camera:WorldToViewportPoint(targetPos)
-                
                 if onScreen then
                     local dist = (fovCenter - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
                     if dist < shortestDist then
                         if visibleAimEnabled and not isVisible(p.Character) then continue end
-                        
                         shortestDist = dist
                         local finalTargetPos = targetPos
                         if predictionEnabled then finalTargetPos = finalTargetPos + (hrp.AssemblyLinearVelocity * 0.15) end
@@ -368,10 +305,9 @@ end
 RunService.RenderStepped:Connect(function()
     local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
     
-    local showFov = aimbotEnabled
     fovCircle.Position = Vector2.new(screenCenter.X + fovOffsetX, screenCenter.Y + fovOffsetY) 
     fovCircle.Radius = circleRadius
-    fovCircle.Visible = showFov
+    fovCircle.Visible = aimbotEnabled
 
     if espEnabled or chamsEnabled then updateESP() end
 
@@ -381,18 +317,16 @@ RunService.RenderStepped:Connect(function()
         if isSprinting then keyrelease(Enum.KeyCode.LeftShift); isSprinting = false end
     end
 
-    -- ИСПРАВЛЕННЫЙ АИМ
+    -- ЖЕСТКИЙ АИМ (Прямое изменение CFrame)
     if aimbotEnabled and holdingKey then
         local target = getTarget()
         if target then
-            local targetScreenPos = camera:WorldToViewportPoint(target.pos)
+            local cameraPos = camera.CFrame.Position
+            local targetPos = target.pos
             
-            -- Вычисляем смещение мыши
-            local moveX = (targetScreenPos.X - (screenCenter.X + fovOffsetX)) * (smoothness * 0.3)
-            local moveY = (targetScreenPos.Y - (screenCenter.Y + fovOffsetY)) * (smoothness * 0.3)
-            
-            -- Двигаем саму мышку
-            mousemoverel(moveX, moveY)
+            -- Плавно (или резко) поворачиваем камеру
+            local newCFrame = CFrame.new(cameraPos, targetPos)
+            camera.CFrame = camera.CFrame:Lerp(newCFrame, smoothness)
         end
     end
 end)
