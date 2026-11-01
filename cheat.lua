@@ -1,5 +1,5 @@
 --[[
-    RUST CLONE CHEAT - OMNIX FRAMEWORK (V14 - SMOOTH FULLBRIGHT)
+    RUST CLONE CHEAT - OMNIX FRAMEWORK (V15 - PERFECT FULLBRIGHT)
     Меню: RightShift (Правый Shift)
     Паника: Кнопка в меню или клавиша END
 ]]
@@ -53,83 +53,59 @@ local State = {
 local ESPObjects = {}
 local ChamsObjects = {}
 local Connections = {}
-local ColorCorrection = nil
-local FullbrightConnection = nil
 
 -- ============================================================================
--- FULLBRIGHT (БЕЗ МОРГАНИЯ)
+-- FULLBRIGHT БЕЗ МОРГАНИЯ (ХУК LIGHTING)
 -- ============================================================================
-local function ApplyLighting()
-    if not Config.Fullbright or State.Unloaded then return end
-    
-    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-    Lighting.Brightness = 2
-    Lighting.ClockTime = 12
-    Lighting.GlobalShadows = false
-    Lighting.FogEnd = 100000
-    Lighting.FogStart = 0
+local FullbrightHooked = false
 
-    -- Добавляем коррекцию цвета (убирает тени, делает картинку сочной)
-    if not ColorCorrection or not ColorCorrection.Parent then
-        ColorCorrection = Instance.new("ColorCorrectionEffect")
-        ColorCorrection.Brightness = 0.5
-        ColorCorrection.Contrast = 0.1
-        ColorCorrection.Saturation = 0.2
-        ColorCorrection.Parent = Camera
-    end
-
-    -- Убираем атмосферный туман
-    for _, v in pairs(Lighting:GetChildren()) do
-        if v:IsA("Atmosphere") then
-            v.Density = 0
-            v.Haze = 0
-            v.Glare = 0
-        end
-    end
-end
-
-local function ToggleFullbright(state)
-    if FullbrightConnection then FullbrightConnection:Disconnect() end
-    
+local function ApplyFullbright(state)
     if state then
-        ApplyLighting()
-        
-        -- Отслеживаем, если игра попытается изменить свет
-        local isUpdating = false
-        FullbrightConnection = Lighting.Changed:Connect(function(prop)
-            if not Config.Fullbright or State.Unloaded or isUpdating then return end
-            if prop == "ClockTime" or prop == "Ambient" or prop == "Brightness" or prop == "OutdoorAmbient" then
-                isUpdating = true
-                ApplyLighting()
-                task.wait(0.1)
-                isUpdating = false
+        -- Удаляем туман и атмосферу
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("Atmosphere") or v:IsA("Sky") or v:IsA("Clouds") then
+                pcall(function() v:Destroy() end)
             end
-        end)
-        
-        -- Периодическая проверка (на случай, если игра меняет свет через CFrame или другие скрипты)
-        task.spawn(function()
-            while Config.Fullbright and not State.Unloaded do
-                ApplyLighting()
-                task.wait(1) 
-            end
-        end)
-        
+        end
+
+        -- Ставим идеальные настройки света (как днем)
+        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 12
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 0
+
+        -- ХУК: Блокируем игре возможность менять свет
+        if not FullbrightHooked and type(hookmetamethod) == "function" then
+            FullbrightHooked = true
+            local mt = getrawmetatable(game)
+            local oldIndex = mt.__newindex
+            setreadonly(mt, false)
+            
+            mt.__newindex = newcclosure(function(self, key, value)
+                -- Если цель - Lighting и Fullbright включен, блокируем изменения
+                if self == Lighting and Config.Fullbright and not State.Unloaded then
+                    if key == "Ambient" or key == "OutdoorAmbient" or key == "Brightness" or key == "ClockTime" or key == "GlobalShadows" or key == "FogEnd" or key == "FogStart" then
+                        return -- Игнорируем попытку игры изменить это
+                    end
+                end
+                return oldIndex(self, key, value)
+            end)
+            setreadonly(mt, true)
+        end
     else
-        -- Возврат в норму
+        -- Возврат в норму (если хук стоит, игра сама вернет свои настройки при следующем цикле)
         Lighting.Ambient = Color3.fromRGB(70, 70, 70)
         Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
         Lighting.Brightness = 1
         Lighting.GlobalShadows = true
         Lighting.FogEnd = 1000
-        
-        if ColorCorrection then
-            ColorCorrection:Destroy()
-            ColorCorrection = nil
-        end
     end
 end
-ToggleFullbright(Config.Fullbright)
+
+ApplyFullbright(Config.Fullbright)
 
 -- ============================================================================
 -- UI ФРЕЙМВОРК
@@ -170,7 +146,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "OMNIX CHEAT | V14 STABLE"
+Title.Text = "OMNIX CHEAT | V15 NO FLICKER"
 Title.TextColor3 = Color3.fromRGB(230, 230, 250)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -366,7 +342,7 @@ CreateToggle(PageVisuals, "Chams (Подсветка)", Config.ChamsEnabled, 35,
 CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
-CreateToggle(PageMisc, "Fullbright (Всегда светло)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ToggleFullbright(v) end)
+CreateToggle(PageMisc, "Fullbright (Всегда светло)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyFullbright(v) end)
 
 local bindBtns = {}
 local function CreateBindButton(parent, text, bindName, posY)
@@ -385,14 +361,12 @@ CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, function()
     State.Unloaded = true
     for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
-    if FullbrightConnection then FullbrightConnection:Disconnect() end
     ScreenGui:Destroy()
     FOVCircle:Remove()
     for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
     for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
-    if ColorCorrection then ColorCorrection:Destroy() end
     keyrelease(Enum.KeyCode.LeftShift)
-    ToggleFullbright(false)
+    ApplyFullbright(false)
 end, Color3.fromRGB(150, 30, 30))
 
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75)
@@ -536,14 +510,12 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
     if input.KeyCode == Config.PanicKey then
         State.Unloaded = true
         for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
-        if FullbrightConnection then FullbrightConnection:Disconnect() end
         ScreenGui:Destroy()
         FOVCircle:Remove()
         for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
         for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
-        if ColorCorrection then ColorCorrection:Destroy() end
         keyrelease(Enum.KeyCode.LeftShift)
-        ToggleFullbright(false)
+        ApplyFullbright(false)
         return
     end
 
@@ -607,4 +579,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[OMNIX] V14 Loaded. Fullbright fixed without flickering.")
+print("[OMNIX] V15 Loaded. Perfect Fullbright (No Flicker). Color Correction removed.")
