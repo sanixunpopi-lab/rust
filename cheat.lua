@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V33 - COSMETICS)
+    pisunRust v2 - OMNIX FRAMEWORK (V34 - COSMETICS FIX)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -43,7 +43,7 @@ local Config = {
     OptParticles = false,    
     OptGraphics = false,     
     
-    -- КОСМЕТИКА (НОВОЕ)
+    -- КОСМЕТИКА
     ThirdPersonEnabled = false,
     ThirdPersonDist = 15,
     ChinaHatEnabled = false,
@@ -102,7 +102,7 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- КОСМЕТИКА: ШЛЯПА И ТРЕЙЛ
+-- КОСМЕТИКА: ШЛЯПА И ТРЕЙЛ (ФИКС)
 -- ============================================================================
 local function UpdateCosmetics()
     if State.Unloaded then return end
@@ -112,7 +112,7 @@ local function UpdateCosmetics()
     local head = char:FindFirstChild("Head")
     local hrp = char:FindFirstChild("HumanoidRootPart")
 
-    -- 1. China Hat (Шляпа)
+    -- 1. China Hat (Шляпа) - ИСПРАВЛЕНО (Weld)
     if head then
         local hat = head:FindFirstChild("CheatChinaHat")
         if Config.ChinaHatEnabled then
@@ -123,6 +123,7 @@ local function UpdateCosmetics()
                 hat.Material = Enum.Material.Neon
                 hat.CanCollide = false
                 hat.Massless = true
+                hat.CFrame = head.CFrame * CFrame.new(0, 1.5, 0)
                 hat.Parent = head
 
                 local mesh = Instance.new("SpecialMesh")
@@ -130,15 +131,12 @@ local function UpdateCosmetics()
                 mesh.Scale = Vector3.new(1, 1, 1)
                 mesh.Parent = hat
 
-                local weld = Instance.new("WeldConstraint")
+                local weld = Instance.new("Weld")
                 weld.Part0 = head
                 weld.Part1 = hat
+                weld.C0 = CFrame.new(0, 1.5, 0)
                 weld.Parent = hat
-                
-                -- Позиционируем ровно над головой
-                hat.CFrame = head.CFrame * CFrame.new(0, 1.5, 0)
             end
-            -- Радужный цвет
             local hue = (tick() * 0.5) % 1
             hat.Color = Color3.fromHSV(hue, 1, 1)
         elseif hat then
@@ -146,18 +144,18 @@ local function UpdateCosmetics()
         end
     end
 
-    -- 2. Trail (След)
+    -- 2. Trail (След) - ИСПРАВЛЕНО (Позиция по бокам и свечение)
     if hrp then
         local trail = hrp:FindFirstChild("CheatTrail")
         if Config.TrailEnabled then
             if not trail then
                 local a0 = Instance.new("Attachment")
-                a0.Position = Vector3.new(0, 1, 0)
+                a0.Position = Vector3.new(1, 0, 0) -- Сдвиг вправо
                 a0.Name = "TrailA0"
                 a0.Parent = hrp
 
                 local a1 = Instance.new("Attachment")
-                a1.Position = Vector3.new(0, -1, 0)
+                a1.Position = Vector3.new(-1, 0, 0) -- Сдвиг влево
                 a1.Name = "TrailA1"
                 a1.Parent = hrp
 
@@ -165,13 +163,14 @@ local function UpdateCosmetics()
                 trail.Name = "CheatTrail"
                 trail.Attachment0 = a0
                 trail.Attachment1 = a1
-                trail.Lifetime = 0.5
+                trail.Lifetime = 1
                 trail.MinLength = 0
+                trail.LightEmission = 1 -- Добавил свечение
                 trail.Parent = hrp
             end
-            -- Радужный цвет
             local hue = (tick() * 0.5) % 1
-            trail.Color = ColorSequence.new(Color3.fromHSV(hue, 1, 1))
+            local color = Color3.fromHSV(hue, 1, 1)
+            trail.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, color), ColorSequenceKeypoint.new(1, color)}
         elseif trail then
             trail:Destroy()
             if hrp:FindFirstChild("TrailA0") then hrp.TrailA0:Destroy() end
@@ -376,7 +375,7 @@ local function AddNotification(amount)
     end)
 end
 
--- Main Menu (Высота 520)
+-- Main Menu
 local Main = Instance.new("Frame"); Main.Size = UDim2.new(0, 520, 0, 520); Main.Position = UDim2.new(0.5, -260, 0.5, -260); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0, 8); MainCorner.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(45, 45, 60); MainStroke.Thickness = 2; MainStroke.Parent = Main
@@ -403,7 +402,7 @@ end
 
 local PageAimbot = CreateTab("Aimbot")
 local PageVisuals = CreateTab("Visuals")
-local PageCosmetics = CreateTab("Cosmetics") -- НОВАЯ ВКЛАДКА
+local PageCosmetics = CreateTab("Cosmetics")
 local PageOptimizer = CreateTab("Optimizer")
 local PageBinds = CreateTab("Binds")
 local PageMisc = CreateTab("Misc")
@@ -469,7 +468,7 @@ CreateSlider(PageVisuals, "Head Size Mult", 1, 5, Config.HeadSizeValue, 270, fun
 CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 315, function(v) Config.DamageNumbers = v end)
 CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 350, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
 
--- COSMETICS TAB (НОВОЕ)
+-- COSMETICS TAB
 CreateToggle(PageCosmetics, "Third Person (3-й вид)", Config.ThirdPersonEnabled, 0, function(v) Config.ThirdPersonEnabled = v end)
 CreateSlider(PageCosmetics, "Camera Distance", 5, 30, Config.ThirdPersonDist, 35, function(v) Config.ThirdPersonDist = v end)
 CreateToggle(PageCosmetics, "China Hat (Шляпа)", Config.ChinaHatEnabled, 80, function(v) Config.ChinaHatEnabled = v end)
@@ -518,7 +517,6 @@ local function FullCleanup()
     for head, origSize in pairs(OriginalHeadSizes) do if head and head.Parent then pcall(function() head.Size = origSize end) end end
     OriginalHeadSizes = {}
     
-    -- Очистка косметики
     if LocalPlayer.Character then
         local head = LocalPlayer.Character:FindFirstChild("Head")
         if head and head:FindFirstChild("CheatChinaHat") then head.CheatChinaHat:Destroy() end
@@ -530,9 +528,9 @@ local function FullCleanup()
         end
     end
     
-    -- Возврат камеры
     LocalPlayer.CameraMode = Enum.CameraMode.Classic
     LocalPlayer.CameraMaxZoomDistance = 128
+    LocalPlayer.CameraMinZoomDistance = 0.5
     
     RestoreOptimization() 
     
@@ -684,17 +682,17 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
-    
-    -- КОСМЕТИКА
     pcall(UpdateCosmetics)
     
-    -- 3-й вид (Принудительно)
+    -- 3-й вид (ФИКС: Жесткая привязка каждый кадр)
     if Config.ThirdPersonEnabled then
-        if LocalPlayer.CameraMode ~= Enum.CameraMode.Classic then LocalPlayer.CameraMode = Enum.CameraMode.Classic end
+        LocalPlayer.CameraMode = Enum.CameraMode.Classic
         if LocalPlayer.CameraMaxZoomDistance ~= Config.ThirdPersonDist then LocalPlayer.CameraMaxZoomDistance = Config.ThirdPersonDist end
+        if LocalPlayer.CameraMinZoomDistance ~= Config.ThirdPersonDist then LocalPlayer.CameraMinZoomDistance = Config.ThirdPersonDist end
     else
-        if LocalPlayer.CameraMode ~= Enum.CameraMode.Classic then LocalPlayer.CameraMode = Enum.CameraMode.Classic end
+        LocalPlayer.CameraMode = Enum.CameraMode.Classic
         if LocalPlayer.CameraMaxZoomDistance ~= 128 then LocalPlayer.CameraMaxZoomDistance = 128 end
+        if LocalPlayer.CameraMinZoomDistance ~= 0.5 then LocalPlayer.CameraMinZoomDistance = 0.5 end
     end
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
@@ -721,4 +719,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V33 Loaded. Cosmetics active.")
+print("[pisunRust v2] V34 Loaded. Cosmetics fixed.")
