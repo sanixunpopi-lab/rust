@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V23 - WEAPON ESP)
+    pisunRust v2 - OMNIX FRAMEWORK (V24 - WEAPON FIX & DEALT-ONLY LOG)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -26,7 +26,7 @@ local Config = {
     
     ESPEnabled = true,
     ESPMaxDist = 1000,
-    ESPWeapon = true, -- НОВОЕ: Показывать оружие
+    ESPWeapon = true,
     ChamsEnabled = true,
     DamageNumbers = true,
     ShowDamageLog = true,
@@ -63,7 +63,7 @@ local ActiveNotifications = {}
 local Connections = {}
 
 -- ============================================================================
--- FULLBRIGHT (СВЕТ)
+-- FULLBRIGHT
 -- ============================================================================
 local function ApplyLighting()
     if not Config.Fullbright or State.Unloaded then return end
@@ -81,56 +81,64 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ФУНКЦИЯ СОКРАЩЕНИЯ НАЗВАНИЙ ОРУЖИЯ
+-- ПОИСК И СОКРАЩЕНИЕ ОРУЖИЯ (ФИКС)
 -- ============================================================================
-local function GetShortWeaponName(toolName)
-    -- Таблица популярных названий в клонах Раста
-    local mappings = {
-        ["Assault Rifle"] = "AR",
-        ["Semi-Automatic Rifle"] = "SAR",
-        ["Bolt Action Rifle"] = "Bolt",
-        ["Custom SMG"] = "SMG",
-        ["Thompson"] = "Tommy",
-        ["Pump Shotgun"] = "Pump",
-        ["Double Barrel Shotgun"] = "DB",
-        ["Hunting Bow"] = "Bow",
-        ["Crossbow"] = "XBow",
-        ["Rocket Launcher"] = "RPG",
-        ["M92 Pistol"] = "Pistol",
-        ["Python"] = "Revolver",
-        ["Salvaged Sword"] = "Sword",
-        ["Rock"] = "Rock",
-        ["Torch"] = "Torch"
-    }
+local function GetWeaponName(character)
+    -- 1. Ищем стандартный Tool в персонаже
+    local tool = character:FindFirstChildOfClass("Tool")
+    if tool then return tool.Name end
     
-    if mappings[toolName] then
-        return mappings[toolName]
-    end
+    -- 2. Ищем Tool в руках (часто бывает в клонах)
+    local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+    local leftHand = character:FindFirstChild("LeftHand") or character:FindFirstChild("Left Arm")
     
-    -- Если оружия нет в списке, делаем сокращение автоматически
-    local words = {}
-    for word in string.gmatch(toolName, "%a+") do
-        table.insert(words, word)
-    end
-    
-    if #words > 1 then
-        -- Если слов несколько, берем первые буквы (например, "Assault Rifle" -> "AR")
-        local abbr = ""
-        for i = 1, math.min(#words, 3) do
-            abbr = abbr .. string.sub(words[i], 1, 1)
+    if rightHand then
+        local toolInHand = rightHand:FindFirstChildOfClass("Tool")
+        if toolInHand then return toolInHand.Name end
+        -- Иногда оружие это просто модель в руке
+        for _, child in pairs(rightHand:GetChildren()) do
+            if child:IsA("Model") or child:IsA("Part") then
+                if string.find(string.lower(child.Name), "gun") or string.find(string.lower(child.Name), "rifle") or string.find(string.lower(child.Name), "bow") or string.find(string.lower(child.Name), "sword") then
+                    return child.Name
+                end
+            end
         end
+    end
+    
+    -- 3. Ищем вообще везде внутри персонажа
+    for _, v in pairs(character:GetDescendants()) do
+        if v:IsA("Tool") then return v.Name end
+    end
+    
+    return nil
+end
+
+local function GetShortWeaponName(toolName)
+    local mappings = {
+        ["Assault Rifle"] = "AR", ["Semi-Automatic Rifle"] = "SAR",
+        ["Bolt Action Rifle"] = "Bolt", ["Custom SMG"] = "SMG",
+        ["Thompson"] = "Tommy", ["Pump Shotgun"] = "Pump",
+        ["Double Barrel Shotgun"] = "DB", ["Hunting Bow"] = "Bow",
+        ["Crossbow"] = "XBow", ["Rocket Launcher"] = "RPG",
+        ["M92 Pistol"] = "Pistol", ["Python"] = "Revolver",
+        ["Salvaged Sword"] = "Sword", ["Rock"] = "Rock", ["Torch"] = "Torch"
+    }
+    if mappings[toolName] then return mappings[toolName] end
+    
+    local words = {}
+    for word in string.gmatch(toolName, "%a+") do table.insert(words, word) end
+    if #words > 1 then
+        local abbr = ""
+        for i = 1, math.min(#words, 3) do abbr = abbr .. string.sub(words[i], 1, 1) end
         return string.upper(abbr)
     else
-        -- Если слово одно, берем первые 4 буквы
-        if #toolName > 4 then
-            return string.upper(string.sub(toolName, 1, 4))
-        end
+        if #toolName > 4 then return string.upper(string.sub(toolName, 1, 4)) end
         return toolName
     end
 end
 
 -- ============================================================================
--- UI ФРЕЙМВОРК + HUD
+-- UI
 -- ============================================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "pisunRustUI_v2"
@@ -145,112 +153,51 @@ TopHUD.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
 TopHUD.BackgroundTransparency = 0.4
 TopHUD.BorderSizePixel = 0
 TopHUD.Parent = ScreenGui
-
-local TopHUDCorner = Instance.new("UICorner")
-TopHUDCorner.CornerRadius = UDim.new(0, 6)
-TopHUDCorner.Parent = TopHUD
-
-local TopHUDStroke = Instance.new("UIStroke")
-TopHUDStroke.Color = Color3.fromRGB(50, 50, 65)
-TopHUDStroke.Thickness = 1
-TopHUDStroke.Parent = TopHUD
+local TopHUDCorner = Instance.new("UICorner"); TopHUDCorner.CornerRadius = UDim.new(0, 6); TopHUDCorner.Parent = TopHUD
+local TopHUDStroke = Instance.new("UIStroke"); TopHUDStroke.Color = Color3.fromRGB(50, 50, 65); TopHUDStroke.Thickness = 1; TopHUDStroke.Parent = TopHUD
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -10, 0, 25)
-TitleLabel.Position = UDim2.new(0, 5, 0, 5)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "pisunRust v2"
-TitleLabel.Font = Enum.Font.GothamBlack
-TitleLabel.TextSize = 18
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = TopHUD
+TitleLabel.Size = UDim2.new(1, -10, 0, 25); TitleLabel.Position = UDim2.new(0, 5, 0, 5); TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "pisunRust v2"; TitleLabel.Font = Enum.Font.GothamBlack; TitleLabel.TextSize = 18; TitleLabel.TextXAlignment = Enum.TextXAlignment.Left; TitleLabel.Parent = TopHUD
 
 local FPSLabel = Instance.new("TextLabel")
-FPSLabel.Size = UDim2.new(1, -10, 0, 20)
-FPSLabel.Position = UDim2.new(0, 5, 0, 25)
-FPSLabel.BackgroundTransparency = 1
-FPSLabel.Text = "FPS: 60"
-FPSLabel.Font = Enum.Font.GothamBold
-FPSLabel.TextSize = 14
-FPSLabel.TextXAlignment = Enum.TextXAlignment.Left
-FPSLabel.Parent = TopHUD
+FPSLabel.Size = UDim2.new(1, -10, 0, 20); FPSLabel.Position = UDim2.new(0, 5, 0, 25); FPSLabel.BackgroundTransparency = 1
+FPSLabel.Text = "FPS: 60"; FPSLabel.Font = Enum.Font.GothamBold; FPSLabel.TextSize = 14; FPSLabel.TextXAlignment = Enum.TextXAlignment.Left; FPSLabel.Parent = TopHUD
 
 local FeaturesLabel = Instance.new("TextLabel")
-FeaturesLabel.Size = UDim2.new(1, -10, 0, 35)
-FeaturesLabel.Position = UDim2.new(0, 5, 0, 45)
-FeaturesLabel.BackgroundTransparency = 1
-FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nChams: ON | Light: ON"
-FeaturesLabel.Font = Enum.Font.GothamSemibold
-FeaturesLabel.TextSize = 12
-FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left
-FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top
-FeaturesLabel.Parent = TopHUD
+FeaturesLabel.Size = UDim2.new(1, -10, 0, 35); FeaturesLabel.Position = UDim2.new(0, 5, 0, 45); FeaturesLabel.BackgroundTransparency = 1
+FeaturesLabel.Text = "Aimbot: ON | ESP: ON\nChams: ON | Light: ON"; FeaturesLabel.Font = Enum.Font.GothamSemibold; FeaturesLabel.TextSize = 12; FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left; FeaturesLabel.TextYAlignment = Enum.TextYAlignment.Top; FeaturesLabel.Parent = TopHUD
 
--- Меню урона (Справа)
+-- Меню урона
 local DamageLogPanel = Instance.new("Frame")
-DamageLogPanel.Size = UDim2.new(0, 180, 0, 160)
-DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80)
-DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-DamageLogPanel.BackgroundTransparency = 0.3
-DamageLogPanel.BorderSizePixel = 0
-DamageLogPanel.Visible = Config.ShowDamageLog
-DamageLogPanel.Parent = ScreenGui
-
-local DLCorner = Instance.new("UICorner")
-DLCorner.CornerRadius = UDim.new(0, 6)
-DLCorner.Parent = DamageLogPanel
-
-local DLStroke = Instance.new("UIStroke")
-DLStroke.Color = Color3.fromRGB(50, 50, 65)
-DLStroke.Thickness = 1
-DLStroke.Parent = DamageLogPanel
+DamageLogPanel.Size = UDim2.new(0, 180, 0, 160); DamageLogPanel.Position = UDim2.new(1, -200, 0.5, -80)
+DamageLogPanel.BackgroundColor3 = Color3.fromRGB(15, 15, 20); DamageLogPanel.BackgroundTransparency = 0.3; DamageLogPanel.BorderSizePixel = 0; DamageLogPanel.Visible = Config.ShowDamageLog; DamageLogPanel.Parent = ScreenGui
+local DLCorner = Instance.new("UICorner"); DLCorner.CornerRadius = UDim.new(0, 6); DLCorner.Parent = DamageLogPanel
+local DLStroke = Instance.new("UIStroke"); DLStroke.Color = Color3.fromRGB(50, 50, 65); DLStroke.Thickness = 1; DLStroke.Parent = DamageLogPanel
 
 local DLTitle = Instance.new("TextLabel")
-DLTitle.Size = UDim2.new(1, -10, 0, 25)
-DLTitle.Position = UDim2.new(0, 5, 0, 0)
-DLTitle.BackgroundTransparency = 1
-DLTitle.Text = "Damage Log"
-DLTitle.TextColor3 = Color3.fromRGB(200, 200, 220)
-DLTitle.Font = Enum.Font.GothamBold
-DLTitle.TextSize = 14
-DLTitle.TextXAlignment = Enum.TextXAlignment.Left
-DLTitle.Parent = DamageLogPanel
+DLTitle.Size = UDim2.new(1, -10, 0, 25); DLTitle.Position = UDim2.new(0, 5, 0, 0); DLTitle.BackgroundTransparency = 1
+DLTitle.Text = "Damage Log (Dealt)"; DLTitle.TextColor3 = Color3.fromRGB(200, 200, 220); DLTitle.Font = Enum.Font.GothamBold; DLTitle.TextSize = 14; DLTitle.TextXAlignment = Enum.TextXAlignment.Left; DLTitle.Parent = DamageLogPanel
 
 local DLContainer = Instance.new("Frame")
-DLContainer.Size = UDim2.new(1, -10, 1, -30)
-DLContainer.Position = UDim2.new(0, 5, 0, 25)
-DLContainer.BackgroundTransparency = 1
-DLContainer.Parent = DamageLogPanel
+DLContainer.Size = UDim2.new(1, -10, 1, -30); DLContainer.Position = UDim2.new(0, 5, 0, 25); DLContainer.BackgroundTransparency = 1; DLContainer.Parent = DamageLogPanel
+local DLContainerLayout = Instance.new("UIListLayout"); DLContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder; DLContainerLayout.VerticalAlignment = Enum.VerticalAlignment.Top; DLContainerLayout.Padding = UDim.new(0, 4); DLContainerLayout.Parent = DLContainer
 
-local DLContainerLayout = Instance.new("UIListLayout")
-DLContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder
-DLContainerLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-DLContainerLayout.Padding = UDim.new(0, 4)
-DLContainerLayout.Parent = DLContainer
-
-local function AddNotification(amount, isTaken)
+-- ТЕПЕРЬ ЛОГ ТОЛЬКО ДЛЯ НАНЕСЕННОГО УРОНА
+local function AddNotification(amount)
     if not Config.ShowDamageLog or State.Unloaded then return end
     amount = math.floor(amount)
     if amount <= 0 then return end
-    local isDealt = not isTaken
-    local mainColor = isDealt and Color3.fromRGB(50, 255, 50) or Color3.fromRGB(255, 50, 50)
-    local textStr = isDealt and ("Dealt: -" .. amount) or ("Taken: +" .. amount)
     
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, 0, 0, 24)
-    bar.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    bar.BackgroundTransparency = 0.2
-    bar.BorderSizePixel = 0
-    bar.Parent = DLContainer
-    
+    bar.Size = UDim2.new(1, 0, 0, 24); bar.BackgroundColor3 = Color3.fromRGB(25, 25, 30); bar.BackgroundTransparency = 0.2; bar.BorderSizePixel = 0; bar.Parent = DLContainer
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 4); corner.Parent = bar
-    local indicator = Instance.new("Frame"); indicator.Size = UDim2.new(0, 4, 1, 0); indicator.BackgroundColor3 = mainColor; indicator.BorderSizePixel = 0; indicator.Parent = bar
+    local indicator = Instance.new("Frame"); indicator.Size = UDim2.new(0, 4, 1, 0); indicator.BackgroundColor3 = Color3.fromRGB(50, 255, 50); indicator.BorderSizePixel = 0; indicator.Parent = bar
     local indCorner = Instance.new("UICorner"); indCorner.CornerRadius = UDim.new(0, 4); indCorner.Parent = indicator
     
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -10, 1, 0); label.Position = UDim2.new(0, 8, 0, 0)
-    label.BackgroundTransparency = 1; label.Text = textStr; label.TextColor3 = mainColor
-    label.Font = Enum.Font.GothamSemibold; label.TextSize = 13; label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = bar
+    label.Size = UDim2.new(1, -10, 1, 0); label.Position = UDim2.new(0, 8, 0, 0); label.BackgroundTransparency = 1
+    label.Text = "Dealt: -" .. amount; label.TextColor3 = Color3.fromRGB(50, 255, 50); label.Font = Enum.Font.GothamSemibold; label.TextSize = 13; label.TextXAlignment = Enum.TextXAlignment.Left; label.Parent = bar
     
     table.insert(ActiveNotifications, bar)
     if #ActiveNotifications > 3 then local oldest = table.remove(ActiveNotifications, 1); oldest:Destroy() end
@@ -270,23 +217,13 @@ end
 
 -- Главное меню
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 520, 0, 400)
-Main.Position = UDim2.new(0.5, -260, 0.5, -200)
-Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true
-Main.Parent = ScreenGui
-
+Main.Size = UDim2.new(0, 520, 0, 400); Main.Position = UDim2.new(0.5, -260, 0.5, -200); Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24); Main.BorderSizePixel = 0; Main.Active = true; Main.Draggable = true; Main.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0, 8); MainCorner.Parent = Main
 local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(45, 45, 60); MainStroke.Thickness = 2; MainStroke.Parent = Main
 
 local Header = Instance.new("Frame"); Header.Size = UDim2.new(1, 0, 0, 45); Header.BackgroundColor3 = Color3.fromRGB(25, 25, 35); Header.Parent = Main
 local HeaderCorner = Instance.new("UICorner"); HeaderCorner.CornerRadius = UDim.new(0, 8); HeaderCorner.Parent = Header
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -20, 1, 0); Title.Position = UDim2.new(0, 15, 0, 0); Title.BackgroundTransparency = 1
-Title.Text = "pisunRust v2 | Menu"; Title.TextColor3 = Color3.fromRGB(230, 230, 250); Title.Font = Enum.Font.GothamBold; Title.TextSize = 16; Title.TextXAlignment = Enum.TextXAlignment.Left; Title.Parent = Header
+local Title = Instance.new("TextLabel"); Title.Size = UDim2.new(1, -20, 1, 0); Title.Position = UDim2.new(0, 15, 0, 0); Title.BackgroundTransparency = 1; Title.Text = "pisunRust v2 | Menu"; Title.TextColor3 = Color3.fromRGB(230, 230, 250); Title.Font = Enum.Font.GothamBold; Title.TextSize = 16; Title.TextXAlignment = Enum.TextXAlignment.Left; Title.Parent = Header
 
 local TabContainer = Instance.new("Frame"); TabContainer.Size = UDim2.new(0, 130, 1, -45); TabContainer.Position = UDim2.new(0, 0, 0, 45); TabContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 30); TabContainer.Parent = Main
 local ContentContainer = Instance.new("Frame"); ContentContainer.Size = UDim2.new(1, -150, 1, -65); ContentContainer.Position = UDim2.new(0, 140, 0, 55); ContentContainer.BackgroundTransparency = 1; ContentContainer.Parent = Main
@@ -363,7 +300,7 @@ local methodBtn = CreateButton(PageAimbot, "Method: " .. Config.AimbotMethod, 17
 end)
 
 CreateToggle(PageVisuals, "ESP Boxes", Config.ESPEnabled, 0, function(v) Config.ESPEnabled = v end)
-CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end) -- НОВЫЙ ТУМБЛЕР
+CreateToggle(PageVisuals, "ESP Weapon Name", Config.ESPWeapon, 35, function(v) Config.ESPWeapon = v end)
 CreateToggle(PageVisuals, "Chams", Config.ChamsEnabled, 70, function(v) Config.ChamsEnabled = v end)
 CreateToggle(PageVisuals, "Damage Numbers", Config.DamageNumbers, 105, function(v) Config.DamageNumbers = v end)
 CreateToggle(PageVisuals, "Show Damage Log", Config.ShowDamageLog, 140, function(v) Config.ShowDamageLog = v; DamageLogPanel.Visible = v end)
@@ -383,19 +320,16 @@ CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
 CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
 CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
 
-Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75)
-Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255)
-Pages["Aimbot"].Visible = true
+Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75); Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255); Pages["Aimbot"].Visible = true
 
 -- ============================================================================
--- СИСТЕМА ПОЛНОГО ВЫКЛЮЧЕНИЯ (UNLOAD)
+-- UNLOAD
 -- ============================================================================
 local function FullCleanup()
     State.Unloaded = true
     for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
     Connections = {}
     if ScreenGui then pcall(function() ScreenGui:Destroy() end) end
-    
     pcall(function() FOVCircle:Remove() end)
     for p, esp in pairs(ESPObjects) do
         pcall(function()
@@ -404,28 +338,22 @@ local function FullCleanup()
         end)
     end
     ESPObjects = {}
-    
     for p, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
     ChamsObjects = {}
     for _, popup in pairs(DamagePopups) do pcall(function() popup.Text:Remove() end) end
     DamagePopups = {}
-    
     pcall(function() keyrelease(Enum.KeyCode.LeftShift) end)
     pcall(function()
-        Lighting.ClockTime = 14
-        Lighting.Brightness = 1
-        Lighting.Ambient = Color3.fromRGB(70, 70, 70)
-        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-        Lighting.GlobalShadows = true
-        Lighting.FogEnd = 1000
+        Lighting.ClockTime = 14; Lighting.Brightness = 1
+        Lighting.Ambient = Color3.fromRGB(70, 70, 70); Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        Lighting.GlobalShadows = true; Lighting.FogEnd = 1000
     end)
-    print("[pisunRust v2] Cheat successfully unloaded. All clean.")
+    print("[pisunRust v2] Unloaded.")
 end
-
 CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, FullCleanup, Color3.fromRGB(150, 30, 30))
 
 -- ============================================================================
--- СИСТЕМА УРОНА (DAMAGE NUMBERS)
+-- СИСТЕМА УРОНА (ТЕПЕРЬ ЛОГ ТОЛЬКО НАНЕСЕННОГО)
 -- ============================================================================
 local function SpawnDamageNumber(position, damage, isTaken)
     if not Config.DamageNumbers or State.Unloaded then return end
@@ -433,14 +361,11 @@ local function SpawnDamageNumber(position, damage, isTaken)
     text.Text = (isTaken and "+" or "-") .. tostring(math.floor(damage))
     text.Color = isTaken and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(50, 255, 50)
     text.Size = 20; text.Center = true; text.Outline = true; text.OutlineColor = Color3.fromRGB(0, 0, 0); text.Transparency = 1
-    
     local screenPos, onScreen = Camera:WorldToViewportPoint(position)
     if onScreen then
         text.Position = Vector2.new(screenPos.X, screenPos.Y)
         table.insert(DamagePopups, {Text = text, Life = 1, StartY = screenPos.Y, CurrentY = screenPos.Y})
-    else
-        text:Remove()
-    end
+    else text:Remove() end
 end
 
 local function TrackPlayer(p)
@@ -453,7 +378,8 @@ local function TrackPlayer(p)
                     if newHealth < oldHealth then
                         local dmg = oldHealth - newHealth
                         local head = char:FindFirstChild("Head")
-                        if head then SpawnDamageNumber(head.Position + Vector3.new(0, 2, 0), dmg, true); AddNotification(dmg, true) end
+                        -- Показываем только цифру, в лог не пишем
+                        if head then SpawnDamageNumber(head.Position + Vector3.new(0, 2, 0), dmg, true) end
                     end
                     hum:SetAttribute("LastHealth", newHealth)
                 end)
@@ -472,7 +398,10 @@ local function TrackPlayer(p)
                 if newHealth < oldHealth then
                     local dmg = oldHealth - newHealth
                     local head = char:FindFirstChild("Head")
-                    if head and dmg > 0 then SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false); AddNotification(dmg, false) end
+                    if head and dmg > 0 then 
+                        SpawnDamageNumber(head.Position + Vector3.new(0, 1, 0), dmg, false)
+                        AddNotification(dmg) -- ТОЛЬКО НАНЕСЕННЫЙ УРОН В ЛОГ
+                    end
                 end
                 hum:SetAttribute("LastHealth", newHealth)
             end)
@@ -486,7 +415,7 @@ for _, p in pairs(Players:GetPlayers()) do TrackPlayer(p) end
 Players.PlayerAdded:Connect(TrackPlayer)
 
 -- ============================================================================
--- УМНЫЙ ESP С ОРУЖИЕМ
+-- ESP
 -- ============================================================================
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 2; FOVCircle.NumSides = 100; FOVCircle.Radius = Config.FOV; FOVCircle.Color = Color3.fromRGB(80, 120, 255); FOVCircle.Filled = false; FOVCircle.Visible = false
@@ -504,7 +433,7 @@ local function CreateESPObject()
     for i=1, 4 do esp["Box"..i] = Drawing.new("Line"); esp["Box"..i].Thickness = 1.5; esp["Box"..i].Color = Color3.fromRGB(255, 60, 60); esp["Box"..i].Visible = false end
     esp.Name = Drawing.new("Text"); esp.Name.Size = 15; esp.Name.Center = true; esp.Name.Outline = true; esp.Name.Font = 2; esp.Name.Color = Color3.fromRGB(255, 255, 255); esp.Name.Visible = false
     esp.Dist = Drawing.new("Text"); esp.Dist.Size = 13; esp.Dist.Center = true; esp.Dist.Outline = true; esp.Dist.Color = Color3.fromRGB(255, 200, 0); esp.Dist.Visible = false
-    esp.Weapon = Drawing.new("Text"); esp.Weapon.Size = 13; esp.Weapon.Center = true; esp.Weapon.Outline = true; esp.Weapon.Color = Color3.fromRGB(255, 150, 50); esp.Weapon.Visible = false -- ОРУЖИЕ
+    esp.Weapon = Drawing.new("Text"); esp.Weapon.Size = 14; esp.Weapon.Center = true; esp.Weapon.Outline = true; esp.Weapon.Color = Color3.fromRGB(255, 150, 50); esp.Weapon.Visible = false
     esp.HealthBarBg = Drawing.new("Square"); esp.HealthBarBg.Filled = true; esp.HealthBarBg.Color = Color3.fromRGB(0, 0, 0); esp.HealthBarBg.Thickness = 1; esp.HealthBarBg.Visible = false
     esp.HealthBarFill = Drawing.new("Square"); esp.HealthBarFill.Filled = true; esp.HealthBarFill.Color = Color3.fromRGB(0, 255, 0); esp.HealthBarFill.Visible = false
     return esp
@@ -583,14 +512,15 @@ local function UpdateESP()
                             
                             esp.Box1.Visible = true; esp.Box2.Visible = true; esp.Box3.Visible = true; esp.Box4.Visible = true
 
+                            -- Сместили текст чуть выше, чтобы оружие влезло
                             esp.Name.Text = p.Name; esp.Name.Position = Vector2.new(screenHead.X, y - 45); esp.Name.Visible = true
                             esp.Dist.Text = "[" .. dist .. "m]"; esp.Dist.Position = Vector2.new(screenHead.X, y - 30); esp.Dist.Visible = true
                             
-                            -- ЛОГИКА ОРУЖИЯ
+                            -- ФИКС ОРУЖИЯ
                             if Config.ESPWeapon then
-                                local tool = p.Character:FindFirstChildOfClass("Tool")
-                                if tool then
-                                    esp.Weapon.Text = "[" .. GetShortWeaponName(tool.Name) .. "]"
+                                local weaponName = GetWeaponName(p.Character)
+                                if weaponName then
+                                    esp.Weapon.Text = "[" .. GetShortWeaponName(weaponName) .. "]"
                                     esp.Weapon.Position = Vector2.new(screenHead.X, y - 15)
                                     esp.Weapon.Visible = true
                                 else
@@ -628,7 +558,6 @@ local function GetTarget()
     if State.Unloaded or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then return nil end
     local closest = nil; local shortestDist = Config.FOV
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") then
             local hum = p.Character.Humanoid; local hrp = p.Character:FindFirstChild("HumanoidRootPart"); local head = p.Character:FindFirstChild("Head")
@@ -652,13 +581,12 @@ local function GetTarget()
 end
 
 -- ============================================================================
--- ВВОД И ЦИКЛЫ
+-- ВВОД
 -- ============================================================================
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if State.Unloaded then return end
     if input.KeyCode == Config.PanicKey then FullCleanup(); return end
     if input.KeyCode == Config.MenuKey then State.MenuOpen = not State.MenuOpen; Main.Visible = State.MenuOpen; return end
-    
     if State.WaitingForKey then
         local keyName = ""
         if input.UserInputType == Enum.UserInputType.Keyboard then Binds[State.WaitingForKey] = input.KeyCode; keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
@@ -667,7 +595,6 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
         return
     end
     if gameProcessed then return end
-
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = true
     elseif input.UserInputType == Binds.ESP or input.KeyCode == Binds.ESP then Config.ESPEnabled = not Config.ESPEnabled
     elseif input.UserInputType == Binds.Chams or input.KeyCode == Binds.Chams then Config.ChamsEnabled = not Config.ChamsEnabled
@@ -681,10 +608,8 @@ end))
 
 table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
-
     ApplyLighting()
     
-    -- РАСЧЕТ FPS
     State.Frames = State.Frames + 1
     State.Time = State.Time + deltaTime
     if State.Time >= 1 then
@@ -693,24 +618,18 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
         State.Time = 0
     end
 
-    -- РАДУЖНЫЙ HUD
     State.RainbowHue = (State.RainbowHue + 0.005) % 1
     local RainbowColor = Color3.fromHSV(State.RainbowHue, 1, 1)
-    
     TitleLabel.TextColor3 = RainbowColor
     FPSLabel.Text = "FPS: " .. State.FPS
     FPSLabel.TextColor3 = RainbowColor
     FeaturesLabel.TextColor3 = RainbowColor
     
-    local featuresText = string.format("Aimbot: %s | ESP: %s\nChams: %s | Light: %s", 
-        Config.AimbotEnabled and "ON" or "OFF",
-        Config.ESPEnabled and "ON" or "OFF",
-        Config.ChamsEnabled and "ON" or "OFF",
-        Config.Fullbright and "ON" or "OFF"
+    FeaturesLabel.Text = string.format("Aimbot: %s | ESP: %s\nChams: %s | Light: %s", 
+        Config.AimbotEnabled and "ON" or "OFF", Config.ESPEnabled and "ON" or "OFF",
+        Config.ChamsEnabled and "ON" or "OFF", Config.Fullbright and "ON" or "OFF"
     )
-    FeaturesLabel.Text = featuresText
 
-    -- ЛОГИКА
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Config.FOV
     FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
@@ -749,4 +668,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V23 Loaded. Weapon ESP active.")
+print("[pisunRust v2] V24 Loaded. Dealt-only log and Robust Weapon ESP active.")
