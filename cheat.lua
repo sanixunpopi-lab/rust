@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V42 - WALLSHOT & ESP FIX)
+    pisunRust v2 - OMNIX FRAMEWORK (V43 - SAFE HOOK & UI FIX)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -23,7 +23,7 @@ local Config = {
     Smoothness = 0.25,
     VisibleAim = true,
     Prediction = true,
-    WallshotEnabled = false, -- НОВОЕ: Стрельба через стены
+    WallshotEnabled = false, -- По умолчанию ВЫКЛ, чтобы не крашить игру
     
     ESPEnabled = true,
     ESPMaxDist = 1000,
@@ -31,11 +31,9 @@ local Config = {
     DamageNumbers = true,
     ShowDamageLog = true,
     
-    -- ВИЗУАЛЫ
     PlayerChamsEnabled = true, 
     ESPBoxHue = 0,             
     
-    -- ITEM ESP
     ItemESPEnabled = true,
     ItemESPMaxDist = 300,      
     ItemESPFilter = "",        
@@ -48,7 +46,6 @@ local Config = {
     HeadSizeEnabled = false, 
     HeadSizeValue = 1,       
     
-    -- Оптимизатор
     OptTextures = false,     
     OptParticles = false,    
     OptGraphics = false,     
@@ -88,36 +85,34 @@ local OriginalHeadSizes = {}
 local OriginalProps = {} 
 
 -- ============================================================================
--- WALLSHOT (ХУК ЛУЧЕЙ)
+-- SAFE WALLSHOT HOOK (НЕ КРАШИТ ИГРУ)
 -- ============================================================================
-if type(hookfunction) == "function" then
-    local oldRaycast = workspace.Raycast
-    workspace.Raycast = function(self, origin, direction, params)
-        if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
-            -- Создаем параметры, которые видят ТОЛЬКО игроков
-            local newParams = RaycastParams.new()
-            newParams.FilterType = Enum.RaycastFilterType.Include
-            newParams.FilterDescendantsInstances = {}
-            
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character then
-                    table.insert(newParams.FilterDescendantsInstances, p.Character)
+task.spawn(function()
+    if type(hookfunction) == "function" then
+        pcall(function()
+            local oldRaycast = workspace.Raycast
+            hookfunction(workspace.Raycast, function(self, origin, direction, params)
+                if Config.WallshotEnabled and not State.Unloaded and LocalPlayer.Character then
+                    local newParams = RaycastParams.new()
+                    newParams.FilterType = Enum.RaycastFilterType.Include
+                    newParams.FilterDescendantsInstances = {}
+                    
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character then
+                            table.insert(newParams.FilterDescendantsInstances, p.Character)
+                        end
+                    end
+                    
+                    local result = oldRaycast(self, origin, direction, newParams)
+                    if result and result.Instance then
+                        return result
+                    end
                 end
-            end
-            
-            -- Пускаем луч сквозь стены
-            local result = oldRaycast(self, origin, direction, newParams)
-            if result and result.Instance then
-                -- Если луч попал в игрока, возвращаем этот результат (игра думает, что стены нет)
-                return result
-            end
-        end
-        -- Если Wallshot выключен или за стеной никого нет, стреляем как обычно
-        return oldRaycast(self, origin, direction, params)
+                return oldRaycast(self, origin, direction, params)
+            end)
+        end)
     end
-else
-    print("[pisunRust v2] Внимание: Ваш экзекьютор не поддерживает hookfunction. Wallshot не будет работать.")
-end
+end)
 
 -- ============================================================================
 -- FULLBRIGHT
@@ -365,7 +360,7 @@ local function GetShortWeaponName(toolName)
 end
 
 -- ============================================================================
--- UI
+-- UI (СОЗДАЕТСЯ ПЕРВЫМ ДЕЛОМ)
 -- ============================================================================
 local ScreenGui = Instance.new("ScreenGui"); ScreenGui.Name = "pisunRustUI_v2"; ScreenGui.Parent = gethui and gethui() or game:GetService("CoreGui"); ScreenGui.ResetOnSpawn = false
 
@@ -819,4 +814,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V42 Loaded. Wallshot active.")
+print("[pisunRust v2] V43 Loaded. Safe Hook UI Fix.")
