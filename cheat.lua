@@ -1,6 +1,7 @@
 --[[
-    RUST CLONE CHEAT - OMNIX FRAMEWORK (V12 - FULLBRIGHT & DEATH FIX)
+    RUST CLONE CHEAT - OMNIX FRAMEWORK (V13 - FULLBRIGHT FIX & PANIC)
     Меню: RightShift (Правый Shift)
+    Паника: Кнопка в меню или клавиша END
 ]]
 
 local Players = game:GetService("Players")
@@ -30,7 +31,8 @@ local Config = {
     
     AutoSprint = false,
     Fullbright = true,
-    MenuKey = Enum.KeyCode.RightShift
+    MenuKey = Enum.KeyCode.RightShift,
+    PanicKey = Enum.KeyCode.End
 }
 
 local Binds = {
@@ -44,27 +46,45 @@ local State = {
     MenuOpen = true,
     HoldingKey = false,
     IsSprinting = false,
-    WaitingForKey = nil
+    WaitingForKey = nil,
+    Unloaded = false
 }
 
 local ESPObjects = {}
 local ChamsObjects = {}
+local Connections = {}
 
 -- ============================================================================
--- ФУНКЦИЯ FULLBRIGHT (ВСЕГДА СВЕТЛО)
+-- FULLBRIGHT (ФИКС: теперь применяется в цикле, так как игра сбрасывает)
 -- ============================================================================
-local function ApplyFullbright()
-    if Config.Fullbright then
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 12
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 100000
-        Lighting.FogStart = 0
-        Lighting.EnvironmentDiffuseScale = 1
-        Lighting.EnvironmentSpecularScale = 1
+local FullbrightConnection = nil
+
+local function ToggleFullbright(state)
+    if FullbrightConnection then FullbrightConnection:Disconnect() end
+    
+    if state then
+        FullbrightConnection = RunService.Heartbeat:Connect(function()
+            if not Config.Fullbright or State.Unloaded then return end
+            
+            -- Убираем туман и ночь насильно каждый кадр
+            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            Lighting.Brightness = 3
+            Lighting.ClockTime = 12
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = 100000
+            Lighting.FogStart = 0
+            
+            -- Удаляем атмосферные эффекты, если они мешают
+            for _, v in pairs(Lighting:GetChildren()) do
+                if v:IsA("Atmosphere") then
+                    v.Density = 0
+                    v.Haze = 0
+                end
+            end
+        end)
     else
+        -- Возвращаем как было
         Lighting.Ambient = Color3.fromRGB(70, 70, 70)
         Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
         Lighting.Brightness = 1
@@ -72,7 +92,7 @@ local function ApplyFullbright()
         Lighting.FogEnd = 1000
     end
 end
-ApplyFullbright() -- Применяем при запуске
+ToggleFullbright(Config.Fullbright)
 
 -- ============================================================================
 -- UI ФРЕЙМВОРК
@@ -113,7 +133,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -20, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "OMNIX CHEAT | FIXED ESP & LIGHT"
+Title.Text = "OMNIX CHEAT | V13 PANIC EDITION"
 Title.TextColor3 = Color3.fromRGB(230, 230, 250)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -279,11 +299,11 @@ local function CreateSlider(parent, text, min, max, default, posY, callback)
     UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
 end
 
-local function CreateButton(parent, text, posY, callback)
+local function CreateButton(parent, text, posY, callback, color)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 0, 32)
     btn.Position = UDim2.new(0, 0, 0, posY)
-    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    btn.BackgroundColor3 = color or Color3.fromRGB(35, 35, 50)
     btn.Text = text
     btn.TextColor3 = Color3.fromRGB(200, 200, 220)
     btn.Font = Enum.Font.GothamSemibold
@@ -309,7 +329,7 @@ CreateToggle(PageVisuals, "Chams (Подсветка)", Config.ChamsEnabled, 35,
 CreateSlider(PageVisuals, "Max ESP Distance", 100, 2000, Config.ESPMaxDist, 70, function(v) Config.ESPMaxDist = v end)
 
 CreateToggle(PageMisc, "Auto Sprint", Config.AutoSprint, 0, function(v) Config.AutoSprint = v end)
-CreateToggle(PageMisc, "Fullbright (Всегда светло)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ApplyFullbright() end)
+CreateToggle(PageMisc, "Fullbright (Всегда светло)", Config.Fullbright, 35, function(v) Config.Fullbright = v; ToggleFullbright(v) end)
 
 local bindBtns = {}
 local function CreateBindButton(parent, text, bindName, posY)
@@ -324,6 +344,18 @@ end
 CreateBindButton(PageBinds, "Aimbot Key", "Aimbot", 0)
 CreateBindButton(PageBinds, "ESP Toggle", "ESP", 40)
 CreateBindButton(PageBinds, "Chams Toggle", "Chams", 80)
+
+-- Кнопка ПАНИКИ
+CreateButton(PageMisc, "UNLOAD CHEAT (PANIC)", 80, function()
+    State.Unloaded = true
+    for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
+    ScreenGui:Destroy()
+    FOVCircle:Remove()
+    for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
+    for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
+    keyrelease(Enum.KeyCode.LeftShift)
+    ToggleFullbright(false)
+end, Color3.fromRGB(150, 30, 30)) -- Красная кнопка
 
 Tabs["Aimbot"].BackgroundColor3 = Color3.fromRGB(50, 50, 75)
 Tabs["Aimbot"].TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -360,21 +392,20 @@ local function CreateESPObject()
 end
 
 local function UpdateESP()
-    -- КРИТИЧЕСКИЙ ФИКС: Если мы мертвы, выключаем ESP и не рисуем дистанции
+    if State.Unloaded then return end
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then
-        for p, esp in pairs(ESPObjects) do
-            esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false
-        end
+        for p, esp in pairs(ESPObjects) do esp.Box.Visible = false; esp.Name.Visible = false; esp.Health.Visible = false; esp.Dist.Visible = false end
         return
     end
 
     for p, esp in pairs(ESPObjects) do
         if not p or not p.Parent or not p.Character or not p.Character:FindFirstChild("Humanoid") or p.Character.Humanoid.Health <= 0 then
-            esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove(); ESPObjects[p] = nil
+            pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end)
+            ESPObjects[p] = nil
         end
     end
     for p, chams in pairs(ChamsObjects) do
-        if not p or not p.Parent or not p.Character then chams:Destroy(); ChamsObjects[p] = nil end
+        if not p or not p.Parent or not p.Character then pcall(function() chams:Destroy() end); ChamsObjects[p] = nil end
     end
 
     for _, p in pairs(Players:GetPlayers()) do
@@ -390,7 +421,7 @@ local function UpdateESP()
                 if dist <= Config.ESPMaxDist then
                     if Config.ChamsEnabled then
                         if not ChamsObjects[p] or ChamsObjects[p].Parent ~= p.Character then
-                            if ChamsObjects[p] then ChamsObjects[p]:Destroy() end
+                            if ChamsObjects[p] then pcall(function() ChamsObjects[p]:Destroy() end) end
                             local chams = Instance.new("Highlight")
                             chams.FillTransparency = 0.5; chams.OutlineTransparency = 0; chams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; chams.Parent = p.Character
                             ChamsObjects[p] = chams
@@ -401,7 +432,7 @@ local function UpdateESP()
                             if IsVisible(p.Character) then chams.FillColor = Color3.fromRGB(0, 255, 0); chams.OutlineColor = Color3.fromRGB(0, 255, 0)
                             else chams.FillColor = Color3.fromRGB(255, 0, 0); chams.OutlineColor = Color3.fromRGB(255, 255, 255) end
                         end
-                    elseif ChamsObjects[p] then ChamsObjects[p]:Destroy(); ChamsObjects[p] = nil end
+                    elseif ChamsObjects[p] then pcall(function() ChamsObjects[p]:Destroy() end); ChamsObjects[p] = nil end
 
                     if Config.ESPEnabled then
                         if not ESPObjects[p] then ESPObjects[p] = CreateESPObject() end
@@ -427,7 +458,7 @@ local function UpdateESP()
 end
 
 local function GetTarget()
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then return nil end
+    if State.Unloaded or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") or LocalPlayer.Character.Humanoid.Health <= 0 then return nil end
     
     local closest = nil
     local shortestDist = Config.FOV
@@ -462,7 +493,21 @@ end
 -- ============================================================================
 -- ВВОД И ЦИКЛЫ
 -- ============================================================================
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
+table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if State.Unloaded then return end
+    if input.KeyCode == Config.PanicKey then
+        -- Активация паники по клавише END
+        State.Unloaded = true
+        for _, conn in pairs(Connections) do pcall(function() conn:Disconnect() end) end
+        ScreenGui:Destroy()
+        FOVCircle:Remove()
+        for _, esp in pairs(ESPObjects) do pcall(function() esp.Box:Remove(); esp.Name:Remove(); esp.Health:Remove(); esp.Dist:Remove() end) end
+        for _, chams in pairs(ChamsObjects) do pcall(function() chams:Destroy() end) end
+        keyrelease(Enum.KeyCode.LeftShift)
+        ToggleFullbright(false)
+        return
+    end
+
     if input.KeyCode == Config.MenuKey then State.MenuOpen = not State.MenuOpen; Main.Visible = State.MenuOpen; return end
     if State.WaitingForKey then
         local keyName = ""
@@ -484,13 +529,16 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     elseif input.UserInputType == Binds.ESP or input.KeyCode == Binds.ESP then Config.ESPEnabled = not Config.ESPEnabled
     elseif input.UserInputType == Binds.Chams or input.KeyCode == Binds.Chams then Config.ChamsEnabled = not Config.ChamsEnabled
     elseif input.UserInputType == Binds.Sprint or input.KeyCode == Binds.Sprint then Config.AutoSprint = not Config.AutoSprint end
-end)
+end))
 
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
+table.insert(Connections, UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if State.Unloaded then return end
     if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = false end
-end)
+end))
 
-RunService.RenderStepped:Connect(function()
+table.insert(Connections, RunService.RenderStepped:Connect(function()
+    if State.Unloaded then return end
+
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Config.FOV
     FOVCircle.Visible = Config.AimbotEnabled and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0)
@@ -502,10 +550,10 @@ RunService.RenderStepped:Connect(function()
     else
         if State.IsSprinting then keyrelease(Enum.KeyCode.LeftShift); State.IsSprinting = false end
     end
-end)
+end))
 
-RunService.Heartbeat:Connect(function()
-    if not Config.AimbotEnabled or not State.HoldingKey then return end
+table.insert(Connections, RunService.Heartbeat:Connect(function()
+    if State.Unloaded or not Config.AimbotEnabled or not State.HoldingKey then return end
     local target = GetTarget()
     if target then
         if Config.AimbotMethod == "Camera" then
@@ -518,6 +566,6 @@ RunService.Heartbeat:Connect(function()
             mousemoverel((screenPos.X - center.X) * Config.Smoothness, (screenPos.Y - center.Y) * Config.Smoothness)
         end
     end
-end)
+end))
 
-print("[OMNIX] Скрипт обновлен. ESP и Fullbright готовы!")
+print("[OMNIX] V13 Loaded. Fullbright Fixed. Panic Button Ready.")
