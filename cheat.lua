@@ -1,5 +1,5 @@
 --[[
-    pisunRust v2 - OMNIX FRAMEWORK (V48 - ONE-COLOR ULTRA SHAKAL)
+    pisunRust v2 - OMNIX FRAMEWORK (V49 - ULTRA SHAKAL LAG FIX)
     Меню: RightShift (Правый Shift)
     Выключить: Кнопка в меню или клавиша END
 ]]
@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 -- ============================================================================
--- НАСТРОЙКИ (ВСЕ ВЫКЛЮЧЕНО ПО УМОЛЧАНИЮ)
+-- НАСТРОЙКИ
 -- ============================================================================
 local Config = {
     AimbotEnabled = false,
@@ -51,7 +51,7 @@ local Config = {
     OptTextures = false,     
     OptParticles = false,    
     OptGraphics = false,     
-    UltraShakalMode = false, -- Супер Шакал (1 цвет)
+    UltraShakalMode = false, 
     
     AutoSprint = false,
     Fullbright = false,
@@ -74,7 +74,8 @@ local State = {
     FPS = 60,
     Frames = 0,
     Time = 0,
-    RainbowHue = 0
+    RainbowHue = 0,
+    LastItemScan = 0
 }
 
 local ESPObjects = {}
@@ -89,7 +90,7 @@ local OriginalProps = {}
 local OriginalUltraProps = {} 
 
 -- ============================================================================
--- WALLSHOT (БЕЗОПАСНЫЙ ХУК)
+-- WALLSHOT
 -- ============================================================================
 task.spawn(function()
     if type(hookfunction) == "function" then
@@ -142,12 +143,12 @@ local function ApplyLighting()
 end
 
 -- ============================================================================
--- ULTRA SHAKAL OPTIMIZATION (1 ЦВЕТ НА ТЕКСТУРУ)
+-- ULTRA SHAKAL OPTIMIZATION (1 ЦВЕТ) - БЕЗ ЛАГОВ
 -- ============================================================================
 local function ApplyUltraOptimization()
     if State.Unloaded or not Config.UltraShakalMode then return end
     
-    -- 1. Отключаем световые эффекты
+    -- Отключаем свет
     for _, v in pairs(Lighting:GetChildren()) do
         if v:IsA("BloomEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("DepthOfFieldEffect") then
             if not OriginalUltraProps[v] then OriginalUltraProps[v] = {Enabled = v.Enabled} end
@@ -155,7 +156,7 @@ local function ApplyUltraOptimization()
         end
     end
     
-    -- 2. Проходимся по всем объектам и делаем их однотонными
+    -- Пробегаемся по всем объектам ОДИН РАЗ
     for _, obj in pairs(workspace:GetDescendants()) do
         if obj:IsA("BasePart") then
             if not OriginalUltraProps[obj] then 
@@ -168,27 +169,17 @@ local function ApplyUltraOptimization()
                 } 
             end
             
-            -- Ставим сплошной серый цвет, простой пластик и убираем тени
             obj.Color = Color3.fromRGB(163, 162, 165) 
             obj.Material = Enum.Material.SmoothPlastic
             obj.CastShadow = false
             
-            -- Убираем текстуры с MeshPart
             if obj:IsA("MeshPart") and obj.TextureID ~= "" then
                 obj.TextureID = ""
             end
             
         elseif obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
-            -- Полностью скрываем текстуры, декали и PBR-материалы
-            if not OriginalUltraProps[obj] then 
-                OriginalUltraProps[obj] = {Transparency = obj.Transparency, Enabled = obj.Enabled} 
-            end
-            
-            if obj:IsA("SurfaceAppearance") then
-                obj.Enabled = false
-            else
-                obj.Transparency = 1
-            end
+            if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Transparency = obj.Transparency, Enabled = obj.Enabled} end
+            if obj:IsA("SurfaceAppearance") then obj.Enabled = false else obj.Transparency = 1 end
             
         elseif obj:IsA("Trail") or obj:IsA("Beam") then
             if not OriginalUltraProps[obj] then OriginalUltraProps[obj] = {Enabled = obj.Enabled} end
@@ -208,7 +199,6 @@ local function ApplyUltraOptimization()
         end
     end
     
-    -- 3. Убиваем воду (чтобы не рендерилась)
     local terrain = workspace:FindFirstChildOfClass("Terrain")
     if terrain then
         terrain.WaterWaveSize = 0
@@ -245,30 +235,28 @@ end
 -- Слушаем новые объекты (чтобы новые текстуры не появлялись)
 workspace.DescendantAdded:Connect(function(obj)
     if Config.UltraShakalMode and not State.Unloaded then
-        task.wait(0.1) 
-        if obj and obj.Parent then
-            if obj:IsA("BasePart") then
-                obj.Color = Color3.fromRGB(163, 162, 165)
-                obj.Material = Enum.Material.SmoothPlastic
-                obj.CastShadow = false
-                if obj:IsA("MeshPart") then obj.TextureID = "" end
-            elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                obj.Transparency = 1
-            elseif obj:IsA("SurfaceAppearance") then
-                obj.Enabled = false
-            elseif obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") then
-                obj.Enabled = false
-            end
+        if obj:IsA("BasePart") then
+            obj.Color = Color3.fromRGB(163, 162, 165)
+            obj.Material = Enum.Material.SmoothPlastic
+            obj.CastShadow = false
+            if obj:IsA("MeshPart") then obj.TextureID = "" end
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            obj.Transparency = 1
+        elseif obj:IsA("SurfaceAppearance") then
+            obj.Enabled = false
+        elseif obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") then
+            obj.Enabled = false
         end
     end
 end)
 
 -- ============================================================================
--- ITEM ESP
+-- ITEM ESP (ОПТИМИЗИРОВАНО: СКАН РАЗ В 0.5 СЕК)
 -- ============================================================================
 local function UpdateItemESP()
     if State.Unloaded then return end
     
+    -- Очистка мертвых
     for item, esp in pairs(ItemESPObjects) do
         if not item or not item.Parent or not Config.ItemESPEnabled then
             esp.Box:Remove(); esp.Text:Remove()
@@ -284,50 +272,57 @@ local function UpdateItemESP()
     end
 
     if not Config.ItemESPEnabled then return end
-    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return end
+    
+    -- Отрисовка того, что уже нашли
+    for item, esp in pairs(ItemESPObjects) do
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if myRoot and esp.Part then
+            local screenPos, onScreen = Camera:WorldToViewportPoint(esp.Part.Position)
+            if onScreen and screenPos.Z > 0 then
+                local dist = math.floor((esp.Part.Position - myRoot.Position).Magnitude)
+                esp.Box.Size = Vector2.new(10, 10)
+                esp.Box.Position = Vector2.new(screenPos.X - 5, screenPos.Y - 5)
+                esp.Box.Visible = true
+                esp.Text.Text = "[" .. dist .. "m] " .. item.Name
+                esp.Text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                esp.Text.Visible = true
+            else
+                esp.Box.Visible = false; esp.Text.Visible = false
+            end
+        end
+    end
 
-    local filter = string.lower(Config.ItemESPFilter)
-    local itemColor = Color3.fromHSV(Config.ItemESPColorHue / 360, 1, 1)
+    -- Сканируем карту ТОЛЬКО раз в 0.5 секунды (Фикс лагов)
+    if tick() - State.LastItemScan > 0.5 then
+        State.LastItemScan = tick()
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
 
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("Tool") or obj:IsA("Model") then
-            local part = obj:FindFirstChildWhichIsA("BasePart")
-            if part then
-                local dist = (part.Position - myRoot.Position).Magnitude
-                if dist <= Config.ItemESPMaxDist then
-                    local objName = string.lower(obj.Name)
-                    local isLoot = false
-                    if filter ~= "" then
-                        if string.find(objName, filter) then isLoot = true end
-                    else
-                        if string.find(objName, "crate") or string.find(objName, "box") or string.find(objName, "loot") or string.find(objName, "bag") or string.find(objName, "weapon") or string.find(objName, "tool") or obj:IsA("Tool") then
-                            isLoot = true
+        local filter = string.lower(Config.ItemESPFilter)
+        local itemColor = Color3.fromHSV(Config.ItemESPColorHue / 360, 1, 1)
+
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("Tool") or obj:IsA("Model") then
+                local part = obj:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    local dist = (part.Position - myRoot.Position).Magnitude
+                    if dist <= Config.ItemESPMaxDist then
+                        local objName = string.lower(obj.Name)
+                        local isLoot = false
+                        if filter ~= "" then
+                            if string.find(objName, filter) then isLoot = true end
+                        else
+                            if string.find(objName, "crate") or string.find(objName, "box") or string.find(objName, "loot") or string.find(objName, "bag") or string.find(objName, "weapon") or string.find(objName, "tool") or obj:IsA("Tool") then
+                                isLoot = true
+                            end
                         end
-                    end
 
-                    if isLoot then
-                        if not ItemESPObjects[obj] then
+                        if isLoot and not ItemESPObjects[obj] then
                             local box = Drawing.new("Square")
                             box.Thickness = 1; box.Color = itemColor; box.Filled = false; box.Visible = false
                             local text = Drawing.new("Text")
                             text.Size = 12; text.Center = true; text.Outline = true; text.Color = itemColor; text.Visible = false
                             ItemESPObjects[obj] = {Box = box, Text = text, Part = part}
-                        end
-                        
-                        local esp = ItemESPObjects[obj]
-                        esp.Box.Color = itemColor; esp.Text.Color = itemColor
-                        
-                        local screenPos, onScreen = Camera:WorldToViewportPoint(esp.Part.Position)
-                        if onScreen and screenPos.Z > 0 then
-                            esp.Box.Size = Vector2.new(10, 10)
-                            esp.Box.Position = Vector2.new(screenPos.X - 5, screenPos.Y - 5)
-                            esp.Box.Visible = true
-                            esp.Text.Text = "[" .. math.floor(dist) .. "m] " .. obj.Name
-                            esp.Text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
-                            esp.Text.Visible = true
-                        else
-                            esp.Box.Visible = false; esp.Text.Visible = false
                         end
                     end
                 end
@@ -959,8 +954,7 @@ table.insert(Connections, RunService.RenderStepped:Connect(function(deltaTime)
     if State.Unloaded then return end
     ApplyLighting()
     if Config.HeadSizeEnabled then pcall(UpdateHeadSize) end
-    if Config.ItemESPEnabled then pcall(UpdateItemESP) end
-    if Config.UltraShakalMode then pcall(ApplyUltraOptimization) end
+    if Config.ItemESPEnabled then pcall(UpdateItemESP) end -- Обновление рентгена предметов (внутри ограничено 0.5 сек)
     
     State.Frames = State.Frames + 1; State.Time = State.Time + deltaTime
     if State.Time >= 1 then State.FPS = math.floor(State.Frames / State.Time); State.Frames = 0; State.Time = 0 end
@@ -986,4 +980,4 @@ table.insert(Connections, RunService.Heartbeat:Connect(function()
     end
 end))
 
-print("[pisunRust v2] V48 Loaded. One-Color Ultra Shakal active.")
+print("[pisunRust v2] V49 Loaded. Ultra Shakal Lag Fixed.")
