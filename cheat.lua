@@ -1,5 +1,5 @@
 --[[
-    Hook Fust - OMNIX FRAMEWORK (V113 - Full Code & Fixes)
+    Hook Fust - OMNIX FRAMEWORK (V114 - Final Fixes)
     Меню: RightShift
     Panic: END
 ]]
@@ -155,9 +155,9 @@ local function SaveConfig(name)
     local path = CONFIG_FOLDER .. "/" .. name .. ".json"
     local success = pcall(function() writefile(path, HttpService:JSONEncode(data)) end)
     if success then 
-        WindUI:Notify({ Title = "Config Saved", Content = "Сохранено: " .. name, Icon = "check" })
+        pcall(function() WindUI:Notify({ Title = "Config Saved", Content = "Сохранено: " .. name, Icon = "check" }) end)
     else 
-        WindUI:Notify({ Title = "Error", Content = "Ошибка сохранения!", Icon = "x" }) 
+        pcall(function() WindUI:Notify({ Title = "Error", Content = "Ошибка сохранения!", Icon = "x" }) end)
     end
 end
 
@@ -165,7 +165,7 @@ local function LoadConfig(name)
     if not name or name == "" then return end
     local path = CONFIG_FOLDER .. "/" .. name .. ".json"
     if not isfile(path) then 
-        WindUI:Notify({ Title = "Error", Content = "Конфиг не найден!", Icon = "x" })
+        pcall(function() WindUI:Notify({ Title = "Error", Content = "Конфиг не найден!", Icon = "x" }) end)
         return 
     end
     
@@ -178,9 +178,9 @@ local function LoadConfig(name)
         SetRemoveGrass(Config.RemoveGrass)
         SetAntiShader(Config.AntiShader)
         if Config.PotatoGraphics then ApplyPotatoGraphics() else RestorePotatoGraphics() end
-        WindUI:Notify({ Title = "Config Loaded", Content = "Загружен: " .. name, Icon = "check" })
+        pcall(function() WindUI:Notify({ Title = "Config Loaded", Content = "Загружен: " .. name, Icon = "check" }) end)
     else 
-        WindUI:Notify({ Title = "Error", Content = "Ошибка чтения файла!", Icon = "x" }) 
+        pcall(function() WindUI:Notify({ Title = "Error", Content = "Ошибка чтения файла!", Icon = "x" }) end)
     end
 end
 
@@ -197,58 +197,52 @@ local function GetConfigList()
 end
 
 -- ============================================================================
--- ИСПРАВЛЕННЫЙ FULLBRIGHT
+-- ИСПРАВЛЕННЫЙ FULLBRIGHT (Без выжигания экрана)
 -- ============================================================================
-local OriginalLighting, OriginalAtmosphere, GameEffects = nil, nil, {}
-local FullbrightCC = nil
-local FullbrightAtm = nil
-
+local OriginalLighting = nil
 local function SetFullbright(enabled)
     if enabled then
-        if not FullbrightCC then
-            FullbrightCC = Instance.new("ColorCorrectionEffect")
-            FullbrightCC.Name = "HookFust_FB_CC"
-            FullbrightCC.Brightness = 2
-            FullbrightCC.Contrast = 0
-            FullbrightCC.Saturation = 1
-            FullbrightCC.Parent = Lighting
-        end
-        if not FullbrightAtm then
-            FullbrightAtm = Instance.new("Atmosphere")
-            FullbrightAtm.Name = "HookFust_FB_Atm"
-            FullbrightAtm.Density = 0
-            FullbrightAtm.Haze = 0
-            FullbrightAtm.Glare = 0
-            FullbrightAtm.Parent = Lighting
+        if not OriginalLighting then
+            OriginalLighting = {
+                ClockTime = Lighting.ClockTime, 
+                Brightness = Lighting.Brightness,
+                Ambient = Lighting.Ambient, 
+                OutdoorAmbient = Lighting.OutdoorAmbient,
+                GlobalShadows = Lighting.GlobalShadows, 
+                FogEnd = Lighting.FogEnd,
+                FogStart = Lighting.FogStart, 
+                FogColor = Lighting.FogColor,
+                EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale,
+                EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
+            }
         end
         pcall(function()
-            Lighting.ClockTime = 12
-            Lighting.Brightness = 3
+            Lighting.ClockTime = 14
+            Lighting.Brightness = 2
+            Lighting.Ambient = Color3.fromRGB(150, 150, 150)
+            Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 150)
             Lighting.GlobalShadows = false
             Lighting.FogEnd = 1000000
             Lighting.FogStart = 0
+            Lighting.EnvironmentDiffuseScale = 1
+            Lighting.EnvironmentSpecularScale = 1
         end)
-        
-        -- Отключаем стандартные эффекты игры, чтобы не мешали
-        GameEffects = {}
-        for _, v in pairs(Lighting:GetChildren()) do
-            if v:IsA("ColorCorrectionEffect") and v ~= FullbrightCC then 
-                table.insert(GameEffects, {obj = v, enabled = v.Enabled})
-                v.Enabled = false
-            elseif v:IsA("BlurEffect") or v:IsA("SunRaysEffect") then 
-                table.insert(GameEffects, {obj = v, enabled = v.Enabled})
-                v.Enabled = false
-            end
-        end
     else
-        if FullbrightCC then FullbrightCC:Destroy(); FullbrightCC = nil end
-        if FullbrightAtm then FullbrightAtm:Destroy(); FullbrightAtm = nil end
-        for _, data in ipairs(GameEffects) do 
-            if data.obj and data.obj.Parent then 
-                data.obj.Enabled = data.enabled 
-            end 
+        if OriginalLighting then
+            pcall(function()
+                Lighting.ClockTime = OriginalLighting.ClockTime
+                Lighting.Brightness = OriginalLighting.Brightness
+                Lighting.Ambient = OriginalLighting.Ambient
+                Lighting.OutdoorAmbient = OriginalLighting.OutdoorAmbient
+                Lighting.GlobalShadows = OriginalLighting.GlobalShadows
+                Lighting.FogEnd = OriginalLighting.FogEnd
+                Lighting.FogStart = OriginalLighting.FogStart
+                Lighting.FogColor = OriginalLighting.FogColor
+                Lighting.EnvironmentDiffuseScale = OriginalLighting.EnvironmentDiffuseScale
+                Lighting.EnvironmentSpecularScale = OriginalLighting.EnvironmentSpecularScale
+            end)
+            OriginalLighting = nil
         end
-        GameEffects = {}
     end
 end
 
@@ -490,7 +484,7 @@ local function UpdateCrosshair()
 end
 
 -- ============================================================================
--- ITEM ESP & DRONE ESP (ИСПРАВЛЕННЫЕ)
+-- ITEM ESP & DRONE ESP
 -- ============================================================================
 local function UpdateItemESP()
     if not Config.ItemESPEnabled then return end
@@ -583,9 +577,15 @@ local function UpdateDroneESP()
     if tick() - lastDroneScan > 1 then
         lastDroneScan = tick()
         for _, obj in pairs(workspace:GetDescendants()) do 
-            if (obj:IsA("Model") or obj:IsA("BasePart")) and not DroneESPObjects[obj] then 
-                local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-                if part and IsDroneName(obj) then 
+            if (obj:IsA("Model") or obj:IsA("BasePart")) and not DroneESPObjects[obj] and IsDroneName(obj) then 
+                local part = nil
+                if obj:IsA("BasePart") then
+                    part = obj
+                elseif obj:IsA("Model") then
+                    part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                end
+
+                if part then 
                     local box = Drawing.new("Square"); box.Thickness = 1; box.Color = Color3.fromRGB(255, 100, 255); box.Filled = false; box.Visible = false
                     local text = Drawing.new("Text"); text.Size = 12; text.Center = true; text.Outline = true; text.Color = Color3.fromRGB(255, 100, 255); text.Visible = false
                     DroneESPObjects[obj] = {Box = box, Text = text, Part = part} 
@@ -631,7 +631,7 @@ local function AddClosestToFriend()
     
     if closest and not Friends[closest] then 
         Friends[closest] = true
-        WindUI:Notify({ Title = "Friend Added", Content = closest.Name .. " добавлен.", Icon = "user-plus" })
+        pcall(function() WindUI:Notify({ Title = "Friend Added", Content = closest.Name .. " добавлен.", Icon = "user-plus" }) end)
         if RefreshFriendsUI then RefreshFriendsUI() end 
     end
 end
@@ -639,7 +639,7 @@ end
 local function RemoveFriend(player)
     if Friends[player] then 
         Friends[player] = nil
-        WindUI:Notify({ Title = "Friend Removed", Content = player.Name .. " удален.", Icon = "user-minus" })
+        pcall(function() WindUI:Notify({ Title = "Friend Removed", Content = player.Name .. " удален.", Icon = "user-minus" }) end)
         if RefreshFriendsUI then RefreshFriendsUI() end 
     end
 end
@@ -649,13 +649,13 @@ local function AddFriendByName(name)
     if target and target ~= LocalPlayer then
         if not Friends[target] then 
             Friends[target] = true
-            WindUI:Notify({ Title = "Friend Added", Content = target.Name .. " добавлен.", Icon = "user-plus" })
+            pcall(function() WindUI:Notify({ Title = "Friend Added", Content = target.Name .. " добавлен.", Icon = "user-plus" }) end)
             if RefreshFriendsUI then RefreshFriendsUI() end
         else 
-            WindUI:Notify({ Title = "Error", Content = "Уже в друзьях!", Icon = "x" }) 
+            pcall(function() WindUI:Notify({ Title = "Error", Content = "Уже в друзьях!", Icon = "x" }) end)
         end
     else 
-        WindUI:Notify({ Title = "Error", Content = "Игрок не найден!", Icon = "x" }) 
+        pcall(function() WindUI:Notify({ Title = "Error", Content = "Игрок не найден!", Icon = "x" }) end)
     end
 end
 
@@ -795,7 +795,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v113", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v114", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local Purple = Color3.fromHex("#7775F2")
 local Yellow = Color3.fromHex("#ECA201")
@@ -843,12 +843,22 @@ end })
 
 VisualsTab:Space()
 local WorldSection = VisualsTab:Section({ Title = "World" })
-WorldSection:Toggle({ Title = "Item ESP", Flag = "ItemESPEnabled", Value = Config.ItemESPEnabled, Callback = function(v) Config.ItemESPEnabled = v end })
+
+WorldSection:Toggle({ Title = "Item ESP", Flag = "ItemESPEnabled", Value = Config.ItemESPEnabled, Callback = function(v) 
+    Config.ItemESPEnabled = v 
+    if not v then 
+        for item, esp in pairs(ItemESPObjects) do 
+            pcall(function() esp.Box:Remove(); esp.Text:Remove() end) 
+        end
+        ItemESPObjects = {} 
+    end
+end })
 WorldSection:Space()
 WorldSection:Input({ Title = "Item Filter", Flag = "ItemESPFilter", Value = Config.ItemESPFilter, Placeholder = "ak, crate...", Callback = function(text) Config.ItemESPFilter = text end })
 WorldSection:Space()
 WorldSection:Slider({ Title = "Item ESP Distance", Flag = "ItemESPMaxDist", Value = { Min = 50, Max = 1000, Default = Config.ItemESPMaxDist }, Callback = function(v) Config.ItemESPMaxDist = v end })
 WorldSection:Space()
+
 WorldSection:Toggle({ Title = "Drone ESP", Flag = "DroneESPEnabled", Value = Config.DroneESPEnabled, Callback = function(v) 
     Config.DroneESPEnabled = v 
     if not v then 
@@ -859,6 +869,7 @@ WorldSection:Toggle({ Title = "Drone ESP", Flag = "DroneESPEnabled", Value = Con
     end
 end })
 WorldSection:Space()
+
 WorldSection:Toggle({ Title = "X-Ray Walls", Flag = "XRayEnabled", Value = Config.XRayEnabled, Callback = function(v) Config.XRayEnabled = v; ApplyXRay() end })
 WorldSection:Space()
 WorldSection:Slider({ Title = "Wall Transparency", Flag = "XRayValue", Value = { Min = 0, Max = 100, Default = Config.XRayValue }, Callback = function(v) Config.XRayValue = v; if Config.XRayEnabled then ApplyXRay() end end })
@@ -886,7 +897,7 @@ FriendsSection:Button({ Title = "ADD BY NAME", Icon = "user-plus", Color = Color
     if friendNameInput and friendNameInput ~= "" then 
         AddFriendByName(friendNameInput) 
     else 
-        WindUI:Notify({ Title = "Error", Content = "Введи ник!", Icon = "x" }) 
+        pcall(function() WindUI:Notify({ Title = "Error", Content = "Введи ник!", Icon = "x" }) end)
     end
 end })
 FriendsSection:Space()
@@ -903,7 +914,7 @@ FriendsSection:Button({ Title = "REMOVE SELECTED", Icon = "user-minus", Color = 
         local target = Players:FindFirstChild(selectedFriendName)
         if target then RemoveFriend(target) end
     else
-        WindUI:Notify({ Title = "Error", Content = "Выбери друга из списка!", Icon = "x" })
+        pcall(function() WindUI:Notify({ Title = "Error", Content = "Выбери друга из списка!", Icon = "x" }) end)
     end
 end })
 
@@ -912,7 +923,7 @@ RefreshFriendsUI = function()
     for p, _ in pairs(Friends) do 
         if p and p.Parent then table.insert(list, p.Name) end 
     end
-    if friendsDropdown then friendsDropdown:Refresh(list) end
+    if friendsDropdown then pcall(function() friendsDropdown:Refresh(list) end) end
 end
 
 table.insert(Connections, Players.PlayerRemoving:Connect(function(p)
@@ -937,7 +948,7 @@ ConfigSection:Input({ Title = "Config Name", Value = "default", Placeholder = "�
 ConfigSection:Space()
 local ConfigsListDropdown = ConfigSection:Dropdown({ Title = "Saved Configs", Values = GetConfigList(), Value = nil, Callback = function(v) if v then currentConfigName = v end end })
 ConfigSection:Space()
-ConfigSection:Button({ Title = "SAVE CONFIG", Icon = "save", Color = Color3.fromHex("#10C550"), Callback = function() SaveConfig(currentConfigName); if ConfigsListDropdown then ConfigsListDropdown:Refresh(GetConfigList()) end end })
+ConfigSection:Button({ Title = "SAVE CONFIG", Icon = "save", Color = Color3.fromHex("#10C550"), Callback = function() SaveConfig(currentConfigName); if ConfigsListDropdown then pcall(function() ConfigsListDropdown:Refresh(GetConfigList()) end) end end })
 ConfigSection:Space()
 ConfigSection:Button({ Title = "LOAD CONFIG", Icon = "download", Color = Color3.fromHex("#257AF7"), Callback = function() LoadConfig(currentConfigName) end })
 
@@ -1388,7 +1399,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
         State.HoldingKey = true
     elseif IsBindPressed(input, Binds.Prediction) then 
         Config.Prediction = not Config.Prediction
-        WindUI:Notify({ Title = "Prediction", Content = Config.Prediction and "Enabled" or "Disabled", Icon = "check" })
+        pcall(function() WindUI:Notify({ Title = "Prediction", Content = Config.Prediction and "Enabled" or "Disabled", Icon = "check" }) end)
     elseif IsBindPressed(input, Binds.AddFriend) then 
         AddClosestToFriend() 
     end
@@ -1454,4 +1465,4 @@ end))
 
 UpdateHUD()
 WMFPS.Text = "FPS: 60"
-WindUI:Notify({ Title = "Hook Fust Loaded", Content = "Нажми RightShift для меню.", Icon = "check", Duration = 5 })
+pcall(function() WindUI:Notify({ Title = "Hook Fust Loaded", Content = "Нажми RightShift для меню.", Icon = "check", Duration = 5 }) end)
