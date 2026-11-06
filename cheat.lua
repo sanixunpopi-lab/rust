@@ -1,5 +1,5 @@
 --[[
-    Hook Fust - OMNIX FRAMEWORK (V110 - 100% Working Binds)
+    Hook Fust - OMNIX FRAMEWORK (V111 - Drone ESP Fix)
     Меню: RightShift
     Panic: END
 ]]
@@ -67,26 +67,23 @@ local OriginalAntiShaderProps = {}
 local OriginalTerrainColors = {}
 local Friends, DeathMarkers, Connections = {}, {}, {}
 local currentConfigName = "default"
+local lastDroneScan = 0
 
 -- ============================================================================
 -- СИСТЕМА БИНДОВ (УЛЬТИМАТИВНЫЙ ПАРСЕР)
 -- ============================================================================
 local function ParseBind(v)
     if not v then return nil end
-    if typeof(v) == "EnumItem" then return v end -- Если WindUI вернул сразу Enum
+    if typeof(v) == "EnumItem" then return v end
     
     local v_str = tostring(v)
-    
-    -- Обработка мыши (все возможные варианты названий)
     if v_str == "MB1" or v_str == "MouseButton1" or v_str == "Mouse1" then return Enum.UserInputType.MouseButton1 end
     if v_str == "MB2" or v_str == "MouseButton2" or v_str == "Mouse2" then return Enum.UserInputType.MouseButton2 end
     if v_str == "MB3" or v_str == "MouseButton3" or v_str == "Mouse3" then return Enum.UserInputType.MouseButton3 end
     
-    -- Обработка клавиатуры
     local success, enum = pcall(function() return Enum.KeyCode[v_str] end)
     if success and enum then return enum end
     
-    -- Обработка других типов ввода (например, геймпад)
     local success2, enum2 = pcall(function() return Enum.UserInputType[v_str] end)
     if success2 and enum2 then return enum2 end
     
@@ -570,32 +567,64 @@ local function UpdateItemESP()
     end
 end
 
+-- ============================================================================
+-- ФИКС DRONE ESP
+-- ============================================================================
+local function IsDroneName(obj)
+    if not obj then return false end
+    local name = string.lower(obj.Name)
+    local keywords = {"drone", "copter", "uav", "quad", "heli", "kopter", "fpv"}
+    for _, kw in ipairs(keywords) do
+        if string.find(name, kw) then return true end
+    end
+    return false
+end
+
 local function UpdateDroneESP()
     if not Config.DroneESPEnabled then return end
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); if not myRoot then return end
-    for drone, esp in pairs(DroneESPObjects) do if not drone or not drone.Parent then pcall(function() esp.Box:Remove(); esp.Text:Remove() end); DroneESPObjects[drone] = nil end end
-    for _, obj in pairs(workspace:GetChildren()) do 
-        if (obj:IsA("Model") or obj:IsA("BasePart")) and string.find(string.lower(obj.Name), "drone") then 
-            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-            if part and not DroneESPObjects[obj] then 
-                local box = Drawing.new("Square"); box.Thickness = 1; box.Color = Color3.fromRGB(255, 100, 255); box.Filled = false; box.Visible = false
-                local text = Drawing.new("Text"); text.Size = 12; text.Center = true; text.Outline = true; text.Color = Color3.fromRGB(255, 100, 255); text.Visible = false
-                DroneESPObjects[obj] = {Box = box, Text = text, Part = part} 
-            end 
+
+    -- Очистка старых
+    for drone, esp in pairs(DroneESPObjects) do 
+        if not drone or not drone.Parent then 
+            pcall(function() esp.Box:Remove(); esp.Text:Remove() end)
+            DroneESPObjects[drone] = nil 
         end 
     end
+
+    -- Сканирование (раз в 1 сек, чтобы не лагало)
+    if tick() - lastDroneScan > 1 then
+        lastDroneScan = tick()
+        for _, obj in pairs(workspace:GetDescendants()) do 
+            if (obj:IsA("Model") or obj:IsA("BasePart")) and IsDroneName(obj) then 
+                local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                if part and not DroneESPObjects[obj] then 
+                    local box = Drawing.new("Square"); box.Thickness = 1; box.Color = Color3.fromRGB(255, 100, 255); box.Filled = false; box.Visible = false
+                    local text = Drawing.new("Text"); text.Size = 12; text.Center = true; text.Outline = true; text.Color = Color3.fromRGB(255, 100, 255); text.Visible = false
+                    DroneESPObjects[obj] = {Box = box, Text = text, Part = part} 
+                end 
+            end 
+        end
+    end
+
+    -- Отрисовка
     for drone, esp in pairs(DroneESPObjects) do 
-        if esp.Part then 
+        if drone and drone.Parent and esp.Part and esp.Part.Parent then 
             local screenPos, onScreen = Camera:WorldToViewportPoint(esp.Part.Position)
             if onScreen and screenPos.Z > 0 then 
                 local dist = math.floor((esp.Part.Position - myRoot.Position).Magnitude)
-                esp.Box.Size = Vector2.new(20, 20); esp.Box.Position = Vector2.new(screenPos.X - 10, screenPos.Y - 10); esp.Box.Visible = true
-                esp.Text.Text = "[DRONE " .. dist .. "m]"; esp.Text.Position = Vector2.new(screenPos.X, screenPos.Y - 20); esp.Text.Visible = true
-            else esp.Box.Visible = false; esp.Text.Visible = false end 
+                esp.Box.Size = Vector2.new(30, 30); esp.Box.Position = Vector2.new(screenPos.X - 15, screenPos.Y - 15); esp.Box.Visible = true
+                esp.Text.Text = "[" .. drone.Name .. " " .. dist .. "m]"; esp.Text.Position = Vector2.new(screenPos.X, screenPos.Y - 20); esp.Text.Visible = true
+            else 
+                esp.Box.Visible = false; esp.Text.Visible = false 
+            end 
         end 
     end
 end
 
+-- ============================================================================
+-- ОСТАЛЬНЫЕ ФУНКЦИИ (HEAD SIZE, XRAY, WEAPON)
+-- ============================================================================
 local function UpdateHeadSize()
     if not Config.HeadSizeEnabled then return end
     for head, _ in pairs(OriginalHeadSizes) do if not head or not head.Parent then OriginalHeadSizes[head] = nil end end
@@ -650,7 +679,7 @@ local Window = WindUI:CreateWindow({
     OpenButton = { Title = "Open Hook Fust", CornerRadius = UDim.new(1, 0), StrokeThickness = 3, Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5, Color = ColorSequence.new(Color3.fromHex("#30FF6A"), Color3.fromHex("#e7ff2f")) },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v110", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v111", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local Purple = Color3.fromHex("#7775F2")
 local Yellow = Color3.fromHex("#ECA201")
@@ -701,7 +730,15 @@ WorldSection:Input({ Title = "Item Filter", Flag = "ItemESPFilter", Value = Conf
 WorldSection:Space()
 WorldSection:Slider({ Title = "Item ESP Distance", Flag = "ItemESPMaxDist", Value = { Min = 50, Max = 1000, Default = Config.ItemESPMaxDist }, Callback = function(v) Config.ItemESPMaxDist = v end })
 WorldSection:Space()
-WorldSection:Toggle({ Title = "Drone ESP", Flag = "DroneESPEnabled", Value = Config.DroneESPEnabled, Callback = function(v) Config.DroneESPEnabled = v end })
+WorldSection:Toggle({ Title = "Drone ESP", Flag = "DroneESPEnabled", Value = Config.DroneESPEnabled, Callback = function(v) 
+    Config.DroneESPEnabled = v 
+    if not v then
+        for drone, esp in pairs(DroneESPObjects) do 
+            pcall(function() esp.Box:Remove(); esp.Text:Remove() end)
+        end
+        DroneESPObjects = {}
+    end
+end })
 WorldSection:Space()
 WorldSection:Toggle({ Title = "X-Ray Walls", Flag = "XRayEnabled", Value = Config.XRayEnabled, Callback = function(v) Config.XRayEnabled = v; ApplyXRay() end })
 WorldSection:Space()
@@ -748,7 +785,6 @@ FriendsSection:Button({ Title = "REMOVE SELECTED", Icon = "user-minus", Color = 
     end
 end })
 
--- Функция обновления UI друзей
 RefreshFriendsUI = function()
     local list = {}
     for p, _ in pairs(Friends) do 
@@ -757,7 +793,6 @@ RefreshFriendsUI = function()
     if friendsDropdown then friendsDropdown:Refresh(list) end
 end
 
--- Удаление из друзей при выходе игрока
 table.insert(Connections, Players.PlayerRemoving:Connect(function(p)
     if Friends[p] then Friends[p] = nil; RefreshFriendsUI() end
 end))
@@ -954,7 +989,6 @@ local function UpdateESP()
                     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"); local dist = (myRoot and hrp) and math.floor((myRoot.Position - hrp.Position).Magnitude) or 0
                     if dist <= Config.ESPMaxDist then
                         
-                        -- ФИКС: Если это друг, ПОЛНОСТЬЮ отключаем ESP и Chams
                         if Friends[p] then
                             if Config.ChamsEnabled then CleanupChams(p) end 
                             if ESPObjects[p] then
@@ -1030,7 +1064,6 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, ga
     if input.KeyCode == Config.PanicKey then FullCleanup(); return end
     if gameProcessed then return end
     
-    -- Проверка биндов
     if IsBindPressed(input, Binds.Aimbot) then 
         State.HoldingKey = true
     elseif IsBindPressed(input, Binds.Prediction) then 
