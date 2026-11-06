@@ -1,5 +1,5 @@
 --[[
-    Hook Fust - OMNIX FRAMEWORK (V109 - Fixed Binds)
+    Hook Fust - OMNIX FRAMEWORK (V110 - 100% Working Binds)
     Меню: RightShift
     Panic: END
 ]]
@@ -69,18 +69,25 @@ local Friends, DeathMarkers, Connections = {}, {}, {}
 local currentConfigName = "default"
 
 -- ============================================================================
--- СИСТЕМА БИНДОВ (НАДЕЖНЫЙ ПАРСЕР)
+-- СИСТЕМА БИНДОВ (УЛЬТИМАТИВНЫЙ ПАРСЕР)
 -- ============================================================================
 local function ParseBind(v)
-    if not v or v == "" then return nil end
-    if v == "MB1" or v == "MouseButton1" then return Enum.UserInputType.MouseButton1 end
-    if v == "MB2" or v == "MouseButton2" then return Enum.UserInputType.MouseButton2 end
-    if v == "MB3" or v == "MouseButton3" then return Enum.UserInputType.MouseButton3 end
+    if not v then return nil end
+    if typeof(v) == "EnumItem" then return v end -- Если WindUI вернул сразу Enum
     
-    local success, enum = pcall(function() return Enum.KeyCode[v] end)
+    local v_str = tostring(v)
+    
+    -- Обработка мыши (все возможные варианты названий)
+    if v_str == "MB1" or v_str == "MouseButton1" or v_str == "Mouse1" then return Enum.UserInputType.MouseButton1 end
+    if v_str == "MB2" or v_str == "MouseButton2" or v_str == "Mouse2" then return Enum.UserInputType.MouseButton2 end
+    if v_str == "MB3" or v_str == "MouseButton3" or v_str == "Mouse3" then return Enum.UserInputType.MouseButton3 end
+    
+    -- Обработка клавиатуры
+    local success, enum = pcall(function() return Enum.KeyCode[v_str] end)
     if success and enum then return enum end
     
-    local success2, enum2 = pcall(function() return Enum.UserInputType[v] end)
+    -- Обработка других типов ввода (например, геймпад)
+    local success2, enum2 = pcall(function() return Enum.UserInputType[v_str] end)
     if success2 and enum2 then return enum2 end
     
     return nil
@@ -643,7 +650,7 @@ local Window = WindUI:CreateWindow({
     OpenButton = { Title = "Open Hook Fust", CornerRadius = UDim.new(1, 0), StrokeThickness = 3, Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5, Color = ColorSequence.new(Color3.fromHex("#30FF6A"), Color3.fromHex("#e7ff2f")) },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v109", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v110", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local Purple = Color3.fromHex("#7775F2")
 local Yellow = Color3.fromHex("#ECA201")
@@ -1021,8 +1028,9 @@ end
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if State.Unloaded then return end
     if input.KeyCode == Config.PanicKey then FullCleanup(); return end
-    if gameProcessed then return end -- Игнорируем ввод, если открыто меню/текстбокс
+    if gameProcessed then return end
     
+    -- Проверка биндов
     if IsBindPressed(input, Binds.Aimbot) then 
         State.HoldingKey = true
     elseif IsBindPressed(input, Binds.Prediction) then 
