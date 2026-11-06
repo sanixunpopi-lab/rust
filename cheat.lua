@@ -1,5 +1,5 @@
 --[[
-    Hook Fust - OMNIX FRAMEWORK (V114 - Final Fixes)
+    Hook Fust - OMNIX FRAMEWORK (V115 - Global Fixes)
     Меню: RightShift
     Panic: END
 ]]
@@ -197,7 +197,7 @@ local function GetConfigList()
 end
 
 -- ============================================================================
--- ИСПРАВЛЕННЫЙ FULLBRIGHT (Без выжигания экрана)
+-- ИСПРАВЛЕННЫЙ FULLBRIGHT (Без белого экрана)
 -- ============================================================================
 local OriginalLighting = nil
 local function SetFullbright(enabled)
@@ -217,15 +217,17 @@ local function SetFullbright(enabled)
             }
         end
         pcall(function()
-            Lighting.ClockTime = 14
+            Lighting.ClockTime = 12
             Lighting.Brightness = 2
-            Lighting.Ambient = Color3.fromRGB(150, 150, 150)
-            Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 150)
+            Lighting.Ambient = Color3.fromRGB(180, 180, 180)
+            Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
             Lighting.GlobalShadows = false
             Lighting.FogEnd = 1000000
             Lighting.FogStart = 0
-            Lighting.EnvironmentDiffuseScale = 1
-            Lighting.EnvironmentSpecularScale = 1
+            Lighting.FogColor = Color3.fromRGB(192, 192, 192)
+            -- Отключаем блики, чтобы не было белого экрана
+            Lighting.EnvironmentDiffuseScale = 0 
+            Lighting.EnvironmentSpecularScale = 0 
         end)
     else
         if OriginalLighting then
@@ -323,7 +325,8 @@ local function IsCharacterPart(obj)
     return false
 end
 
-local UNIFORM_GROUND_COLOR = Color3.fromRGB(85, 107, 47)
+-- ИЗМЕНЕНО: Теперь цвет СЕРЫЙ (как в старых читах)
+local UNIFORM_GROUND_COLOR = Color3.fromRGB(163, 162, 165)
 
 local function ApplyPotatoGraphics()
     if not Config.PotatoGraphics or isApplyingGrey then return end
@@ -352,7 +355,7 @@ local function ApplyPotatoGraphics()
                     OriginalUltraProps[obj] = {Material = obj.Material, TextureID = obj:IsA("MeshPart") and obj.TextureID or nil, Color = obj.Color} 
                 end
                 obj.Material = Enum.Material.SmoothPlastic
-                obj.Color = UNIFORM_GROUND_COLOR
+                obj.Color = UNIFORM_GROUND_COLOR -- Красим в СЕРЫЙ
                 if obj:IsA("MeshPart") then obj.TextureID = "" end
                 
             elseif obj:IsA("Decal") or obj:IsA("Texture") then 
@@ -484,7 +487,7 @@ local function UpdateCrosshair()
 end
 
 -- ============================================================================
--- ITEM ESP & DRONE ESP
+-- ITEM ESP & DRONE ESP (ФИКС ОЧИСТКИ)
 -- ============================================================================
 local function UpdateItemESP()
     if not Config.ItemESPEnabled then return end
@@ -795,7 +798,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v114", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v115", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local Purple = Color3.fromHex("#7775F2")
 local Yellow = Color3.fromHex("#ECA201")
@@ -939,7 +942,7 @@ OptSection:Toggle({ Title = "Remove Grass", Flag = "RemoveGrass", Value = Config
 OptSection:Space()
 OptSection:Toggle({ Title = "Anti-Shader", Flag = "AntiShader", Value = Config.AntiShader, Callback = function(v) Config.AntiShader = v; SetAntiShader(v) end })
 OptSection:Space()
-OptSection:Toggle({ Title = "Potato Graphics", Flag = "PotatoGraphics", Value = Config.PotatoGraphics, Callback = function(v) Config.PotatoGraphics = v; if v then ApplyPotatoGraphics() else RestorePotatoGraphics() end end })
+OptSection:Toggle({ Title = "Potato Graphics (Серый)", Flag = "PotatoGraphics", Value = Config.PotatoGraphics, Callback = function(v) Config.PotatoGraphics = v; if v then ApplyPotatoGraphics() else RestorePotatoGraphics() end end })
 
 -- === ВКЛАДКА: CONFIGS ===
 local ConfigsTab = Window:Tab({ Title = "Configs", Icon = "solar:folder-with-files-bold", IconColor = Yellow, IconShape = "Square", Border = true })
