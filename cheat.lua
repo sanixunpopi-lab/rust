@@ -1,5 +1,5 @@
 --[[
-    Hook Fust - OMNIX FRAMEWORK (V108 - Fixed & Expanded)
+    Hook Fust - OMNIX FRAMEWORK (V109 - Fixed Binds)
     Меню: RightShift
     Panic: END
 ]]
@@ -54,7 +54,12 @@ local Config = {
     PanicKey = Enum.KeyCode.End
 }
 
-local Binds = { Aimbot = Enum.UserInputType.MouseButton2, Prediction = Enum.KeyCode.P, AddFriend = Enum.KeyCode.F }
+local Binds = { 
+    Aimbot = Enum.UserInputType.MouseButton2, 
+    Prediction = Enum.KeyCode.P, 
+    AddFriend = Enum.KeyCode.F 
+}
+
 local State = { HoldingKey = false, Unloaded = false, FPS = 60, Frames = 0, Time = 0 }
 local ESPObjects, ChamsObjects, ItemESPObjects, DroneESPObjects = {}, {}, {}, {}
 local OriginalTransparencies, OriginalHeadSizes, OriginalUltraProps = {}, {}, {}
@@ -62,6 +67,36 @@ local OriginalAntiShaderProps = {}
 local OriginalTerrainColors = {}
 local Friends, DeathMarkers, Connections = {}, {}, {}
 local currentConfigName = "default"
+
+-- ============================================================================
+-- СИСТЕМА БИНДОВ (НАДЕЖНЫЙ ПАРСЕР)
+-- ============================================================================
+local function ParseBind(v)
+    if not v or v == "" then return nil end
+    if v == "MB1" or v == "MouseButton1" then return Enum.UserInputType.MouseButton1 end
+    if v == "MB2" or v == "MouseButton2" then return Enum.UserInputType.MouseButton2 end
+    if v == "MB3" or v == "MouseButton3" then return Enum.UserInputType.MouseButton3 end
+    
+    local success, enum = pcall(function() return Enum.KeyCode[v] end)
+    if success and enum then return enum end
+    
+    local success2, enum2 = pcall(function() return Enum.UserInputType[v] end)
+    if success2 and enum2 then return enum2 end
+    
+    return nil
+end
+
+local function IsBindPressed(input, bind)
+    if not bind then return false end
+    if typeof(bind) ~= "EnumItem" then return false end
+    
+    if bind.EnumType == Enum.KeyCode then
+        return input.KeyCode == bind
+    elseif bind.EnumType == Enum.UserInputType then
+        return input.UserInputType == bind
+    end
+    return false
+end
 
 -- ============================================================================
 -- СИСТЕМА КОНФИГОВ (JSON)
@@ -608,7 +643,7 @@ local Window = WindUI:CreateWindow({
     OpenButton = { Title = "Open Hook Fust", CornerRadius = UDim.new(1, 0), StrokeThickness = 3, Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5, Color = ColorSequence.new(Color3.fromHex("#30FF6A"), Color3.fromHex("#e7ff2f")) },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v108", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v109", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local Purple = Color3.fromHex("#7775F2")
 local Yellow = Color3.fromHex("#ECA201")
@@ -754,11 +789,20 @@ MiscSection:Slider({ Title = "Max ESP Distance", Flag = "ESPMaxDist", Value = { 
 
 MiscTab:Space()
 local BindsSection = MiscTab:Section({ Title = "Key Binds" })
-BindsSection:Keybind({ Title = "Aimbot Key", Value = "MB2", Callback = function(v) if v then local success, enum = pcall(function() return Enum.UserInputType[v] or Enum.KeyCode[v] end); if success and enum then Binds.Aimbot = enum end end end })
+BindsSection:Keybind({ Title = "Aimbot Key", Value = "MouseButton2", Callback = function(v) 
+    local parsed = ParseBind(v)
+    if parsed then Binds.Aimbot = parsed end
+end })
 BindsSection:Space()
-BindsSection:Keybind({ Title = "Prediction Toggle", Value = "P", Callback = function(v) if v then local success, enum = pcall(function() return Enum.KeyCode[v] end); if success and enum then Binds.Prediction = enum end end end })
+BindsSection:Keybind({ Title = "Prediction Toggle", Value = "P", Callback = function(v) 
+    local parsed = ParseBind(v)
+    if parsed then Binds.Prediction = parsed end
+end })
 BindsSection:Space()
-BindsSection:Keybind({ Title = "Add Friend (Closest)", Value = "F", Callback = function(v) if v then local success, enum = pcall(function() return Enum.KeyCode[v] end); if success and enum then Binds.AddFriend = enum end end end })
+BindsSection:Keybind({ Title = "Add Friend (Closest)", Value = "F", Callback = function(v) 
+    local parsed = ParseBind(v)
+    if parsed then Binds.AddFriend = parsed end
+end })
 
 -- ============================================================================
 -- HUD (WATERMARK)
@@ -977,16 +1021,21 @@ end
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if State.Unloaded then return end
     if input.KeyCode == Config.PanicKey then FullCleanup(); return end
-    if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = true
-    elseif input.UserInputType == Binds.Prediction or input.KeyCode == Binds.Prediction then 
+    if gameProcessed then return end -- Игнорируем ввод, если открыто меню/текстбокс
+    
+    if IsBindPressed(input, Binds.Aimbot) then 
+        State.HoldingKey = true
+    elseif IsBindPressed(input, Binds.Prediction) then 
         Config.Prediction = not Config.Prediction
         WindUI:Notify({ Title = "Prediction", Content = Config.Prediction and "Enabled" or "Disabled", Icon = "check" })
-    elseif input.UserInputType == Binds.AddFriend or input.KeyCode == Binds.AddFriend then AddClosestToFriend() end
+    elseif IsBindPressed(input, Binds.AddFriend) then 
+        AddClosestToFriend() 
+    end
 end))
 
 table.insert(Connections, UserInputService.InputEnded:Connect(function(input, gameProcessed) 
     if State.Unloaded then return end
-    if input.UserInputType == Binds.Aimbot or input.KeyCode == Binds.Aimbot then State.HoldingKey = false end 
+    if IsBindPressed(input, Binds.Aimbot) then State.HoldingKey = false end 
 end))
 
 local hudUpdateTimer = 0
